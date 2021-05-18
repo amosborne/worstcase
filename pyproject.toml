@@ -1,0 +1,37 @@
+[tool.poetry]
+name = "worstcase"
+version = "0.1.0"
+description = "Worst case analysis and sensitivity studies using Extreme Value and/or Monte Carlo methods."
+authors = ["amosborne <amosborne@users.noreply.github.com>"]
+license = "MIT"
+readme = "README.md"
+repository = "https://github.com/amosborne/worstcase"
+
+[tool.poetry.dependencies]
+python = "3.9"
+scipy = "^1.6.3"
+matplotlib = "^3.4.2"
+
+[tool.poetry.dev-dependencies]
+pre-commit = "^2.12.1"
+isort = "^5.8.0"
+black = "^21.5b1"
+mypy = "^0.812"
+flake9 = "^3.8.3"
+pytest-randomly = "^3.8.0"
+pytest-cov = "^2.12.0"
+jupyterlab = "^3.0.15"
+nb-black = "^1.0.7"
+
+[tool.isort]
+profile = "black"
+multi_line_output = 3
+
+[tool.flake8]
+max-line-length = 88
+extend-ignore = "E203"
+exclude = "*.ipynb_checkpoints*"
+
+[build-system]
+requires = ["poetry-core>=1.0.0"]
+build-backend = "poetry.core.masonry.api"
