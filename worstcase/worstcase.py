@@ -1,75 +1,90 @@
+from enum import Enum, auto
 from functools import partial
+from inspect import Signature
 from itertools import product
 from random import sample
+from types import SimpleNamespace
 
 import numpy as np
 from matplotlib import pyplot as plt  # type: ignore
 from scipy.stats import uniform  # type: ignore
 
-from enum import Enum, auto
-from types import SimpleNamespace
-from collections import namedtuple
-from inspect import Signature
 
 class Mode(Enum):
     MC = auto()
     EV = auto()
 
-class ParamBuilder:
-    def __init__(self, func, mode, *args, **kwargs):
-        sig = Signature.from_callable(func)
-        
-        self.func = func
-        self.bind = sig.bind_partial(*args, **kwargs)
-        self.mode = mode
-    
-    @staticmethod
-    def byrange(nom, lb, ub):
-        return Param(nom, lb, ub)
-    
-    @staticmethod
-    def bytol(nom, tol, rel):
-        tol = nom * tol if rel else tol
-        return Param(nom, nom - tol, nom + tol)
-    
-    @classmethod
-    def ev(cls, *args, **kwargs):
-        def decorator(func):
-            return cls(func, Mode.EV, *args, **kwargs)
-        
-        return decorator
-    
-    @classmethod
-    def mc(cls, func, *args, **kwargs):
-        def decorator(func):
-            return cls(func, Mode.MC, *args, **kwargs)
-        
-        return decorator
-    
-    def __call__(self, *args, **kwargs):
-        newsig = Signature.from_callable(self.func)
-        newbind = newsig.bind_partial(*args, **kwargs)
 
-        finalbind = {**self.bind.arguments}
-        finalbind.update(newbind.arguments)
-
-        print(finalbind)
-
-    
 class Param:
     def __init__(self, nom, lb, ub):
         self.nom = nom
         self.lb = lb
         self.ub = ub
-    
+
+
+class ParamBuilder(Param):
+    def __init__(self, func, mode, *args, **kwargs):
+        sig = Signature.from_callable(func)
+
+        self.func = func
+        self.bind = sig.bind_partial(*args, **kwargs)
+        self.mode = mode
+
+    @property
+    def nom(self):
+        return self.build().nom
+
+    @property
+    def lb(self):
+        return self.build().lb
+
+    @property
+    def ub(self):
+        return self.build().ub
+
+    @staticmethod
+    def byrange(nom, lb, ub):
+        return Param(nom, lb, ub)
+
+    @staticmethod
+    def bytol(nom, tol, rel):
+        tol = nom * tol if rel else tol
+        return Param(nom, nom - tol, nom + tol)
+
+    @classmethod
+    def ev(cls, *args, **kwargs):
+        def decorator(func):
+            return cls(func, Mode.EV, *args, **kwargs)
+
+        return decorator
+
+    @classmethod
+    def mc(cls, func, *args, **kwargs):
+        def decorator(func):
+            return cls(func, Mode.MC, *args, **kwargs)
+
+        return decorator
+
+    def __call__(self, *args, **kwargs):
+        newsig = Signature.from_callable(self.func)
+        newbind = newsig.bind_partial(*args, **kwargs)
+        finalbind = {**self.bind.arguments}
+        finalbind.update(newbind.arguments)
+        return ParamBuilder(self.func, self.mode, **finalbind)
+
+    def build(self):
+        raise NotImplementedError("Param building not implemented.")
+
 
 def uniform_dist(param):
     def uniform_draw(n):
         return uniform.rvs(loc=param.lb, scale=param.ub - param.lb, size=n)
-    
+
     return uniform_draw
 
+
 Config = SimpleNamespace(n=5000, dist=uniform_dist)
+
 
 class Param2:
     def __init__(self, arg, nom, lb, ub, **kwargs):
