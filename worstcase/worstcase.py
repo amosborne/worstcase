@@ -6,8 +6,72 @@ import numpy as np
 from matplotlib import pyplot as plt  # type: ignore
 from scipy.stats import uniform  # type: ignore
 
+from enum import Enum, auto
+from types import SimpleNamespace
+from collections import namedtuple
+from inspect import Signature
 
+class Mode(Enum):
+    MC = auto()
+    EV = auto()
+
+class ParamBuilder:
+    def __init__(self, func, mode, *args, **kwargs):
+        sig = Signature.from_callable(func)
+        
+        self.func = func
+        self.bind = sig.bind_partial(*args, **kwargs)
+        self.mode = mode
+    
+    @staticmethod
+    def byrange(nom, lb, ub):
+        return Param(nom, lb, ub)
+    
+    @staticmethod
+    def bytol(nom, tol, rel):
+        tol = nom * tol if rel else tol
+        return Param(nom, nom - tol, nom + tol)
+    
+    @classmethod
+    def ev(cls, *args, **kwargs):
+        def decorator(func):
+            return cls(func, Mode.EV, *args, **kwargs)
+        
+        return decorator
+    
+    @classmethod
+    def mc(cls, func, *args, **kwargs):
+        def decorator(func):
+            return cls(func, Mode.MC, *args, **kwargs)
+        
+        return decorator
+    
+    def __call__(self, *args, **kwargs):
+        newsig = Signature.from_callable(self.func)
+        newbind = newsig.bind_partial(*args, **kwargs)
+
+        finalbind = {**self.bind.arguments}
+        finalbind.update(newbind.arguments)
+
+        print(finalbind)
+
+    
 class Param:
+    def __init__(self, nom, lb, ub):
+        self.nom = nom
+        self.lb = lb
+        self.ub = ub
+    
+
+def uniform_dist(param):
+    def uniform_draw(n):
+        return uniform.rvs(loc=param.lb, scale=param.ub - param.lb, size=n)
+    
+    return uniform_draw
+
+Config = SimpleNamespace(n=5000, dist=uniform_dist)
+
+class Param2:
     def __init__(self, arg, nom, lb, ub, **kwargs):
         """
         A randomly varying parameter with a nominal and extreme values.

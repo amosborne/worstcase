@@ -1,3 +1,2 @@
-from .worstcase import Param, ev, mc
-
-__all__ = ["Param", "ev", "mc"]
+from .worstcase import Config, ev, mc
+from .worstcase import ParamBuilder as param

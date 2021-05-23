@@ -11,6 +11,7 @@ repository = "https://github.com/amosborne/worstcase"
 python = "3.9"
 scipy = "^1.6.3"
 matplotlib = "^3.4.2"
+networkx = "^2.5.1"
 
 [tool.poetry.dev-dependencies]
 pre-commit = "^2.12.1"
