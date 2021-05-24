@@ -1,5 +1,6 @@
 from enum import Enum, auto
 from inspect import Signature
+from itertools import product
 
 import networkx as nx  # type: ignore
 
@@ -15,9 +16,8 @@ class Param:
         self.lb = lb  # lower bound
         self.ub = ub  # upper bound
 
-        graph = nx.DiGraph()
-        graph.add_node(self)
-        self.graph = graph
+    def build(self):
+        return self
 
 
 class ParamBuilder(Param):
@@ -37,17 +37,10 @@ class ParamBuilder(Param):
         for pred in predecessors:
             graph.add_node(pred)
             graph.add_edge(pred, self, mode=mode)
-            graph = nx.compose(graph, pred.graph)
+            if isinstance(pred, ParamBuilder):
+                graph = nx.compose(graph, pred.graph)
 
-        # VERIFY: No node is used in both MC and EV worst-case analyses.
-        for node in graph:
-            out_edges = graph.out_edges(node, data="mode")
-            if out_edges:
-                modes = [m for (_, _, m) in out_edges]
-                assert modes.count(modes[0]) == len(
-                    modes
-                ), "A parameter cannot be used in both MC and EV analysis modes."
-
+        assert nx.is_tree(graph), "Composed worst case analysis must be acyclic."
         self.graph = graph
 
     @property
@@ -90,7 +83,42 @@ class ParamBuilder(Param):
         newbind = newsig.bind_partial(*args, **kwargs)
         finalbind = {**self.bind.arguments}
         finalbind.update(newbind.arguments)
+
+        try:
+            bind = newsig.bind(**finalbind)
+            params = list(
+                filter(lambda v: isinstance(v, Param), bind.arguments.values())
+            )
+            if not params:
+                return self.func(**finalbind)
+        except TypeError:
+            pass
+
         return ParamBuilder(self.func, self.mode, **finalbind)
 
     def build(self):
-        raise NotImplementedError("Param building not implemented.")
+        predecessors = {
+            k: v.build() for k, v in self.bind.arguments.items() if isinstance(v, Param)
+        }
+
+        if self.mode is Mode.EV:
+
+            lbmin, ubmax = float("inf"), -float("inf")
+            for combo in product((min, max), repeat=len(predecessors)):
+                kwargs = {**self.bind.arguments}
+                kwargs.update(
+                    {
+                        k: get(v.lb, v.ub)
+                        for get, (k, v) in zip(combo, predecessors.items())
+                    }
+                )
+                result = self.func(**kwargs)
+                lbmin = result if result < lbmin else lbmin
+                ubmax = result if result > ubmax else ubmax
+
+            kwargs.update({k: v.nom for (k, v) in predecessors.items()})
+            nom = self.func(**kwargs)
+            return Param(nom=nom, lb=lbmin, ub=ubmax)
+
+        else:
+            pass
