@@ -98,11 +98,7 @@ class ParamBuilder(Param):
         return decorator
 
     def __call__(self, *args, tag=None, **kwargs):
-        # If no arguments, return the built parameter.
-        if not args and not kwargs:
-            return self.build()
-
-        # Otherwise, update the binding arguments.
+        # Update the binding arguments.
         newsig = Signature.from_callable(self.func)
         newbind = newsig.bind_partial(*args, **kwargs)
         finalbind = {**self.bind.arguments}
@@ -117,9 +113,33 @@ class ParamBuilder(Param):
         except TypeError:
             pass
 
+        # If no arguments, return the built parameter.
+        if not args and not kwargs:
+            return self.build()
+
         # Otherwise, return a new parameter builder.
         tag = self.func.__name__ if tag is None else tag
         return ParamBuilder(self.func, self.mode, tag=tag, **finalbind)
+
+    def ss(self, params, tag=None):
+        if not isinstance(params, list):
+            params = [params]
+
+        bind = {**self.bind.arguments}
+        for k, v in bind.items():
+            if v not in params:
+                if isinstance(v, ParamBuilder):
+                    builder = v.ss(params)
+                    built = builder()
+                    if not isinstance(built, Param):
+                        bind[k] = built
+                    else:
+                        bind[k] = builder
+                elif isinstance(v, Param):
+                    bind[k] = v.nom
+
+        tag = self.func.__name__ if tag is None else tag
+        return ParamBuilder(self.func, self.mode, tag=tag, **bind)
 
     def build(self):
         predecessors = {
