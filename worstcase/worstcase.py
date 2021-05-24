@@ -6,6 +6,7 @@ from types import SimpleNamespace
 import networkx as nx  # type: ignore
 from pint import Quantity, UnitRegistry  # type: ignore
 from pyDOE import lhs  # type: ignore
+from treelib import Tree  # type: ignore
 
 Config = SimpleNamespace(n=5000, sigfig=3)
 Unit = UnitRegistry()
@@ -81,16 +82,18 @@ class ParamBuilder(Param):
         return Param(nom * unit, (nom - tol) * unit, (nom + tol) * unit, tag)
 
     @classmethod
-    def ev(cls, *args, tag="", **kwargs):
+    def ev(cls, *args, tag=None, **kwargs):
         def decorator(func):
-            return cls(func, Mode.EV, *args, **kwargs, tag=tag)
+            newtag = func.__name__ if tag is None else tag
+            return cls(func, Mode.EV, *args, **kwargs, tag=newtag)
 
         return decorator
 
     @classmethod
-    def mc(cls, *args, tag="", **kwargs):
+    def mc(cls, *args, tag=None, **kwargs):
         def decorator(func):
-            return cls(func, Mode.MC, *args, **kwargs, tag=tag)
+            newtag = func.__name__ if tag is None else tag
+            return cls(func, Mode.MC, *args, **kwargs, tag=newtag)
 
         return decorator
 
@@ -115,7 +118,7 @@ class ParamBuilder(Param):
             pass
 
         # Otherwise, return a new parameter builder.
-        tag = self.tag if tag is None else tag
+        tag = self.func.__name__ if tag is None else tag
         return ParamBuilder(self.func, self.mode, tag=tag, **finalbind)
 
     def build(self):
@@ -152,5 +155,18 @@ class ParamBuilder(Param):
 
             print(matrix)
 
+    def _make_tree(self):
+        tree = Tree()
+        mode = " (mc)" if self.mode is Mode.MC else " (ev)"
+        tree.create_node(self.tag + mode, hash(self))
+
+        for (u, v) in self.graph.in_edges(self):
+            if isinstance(u, ParamBuilder):
+                tree.paste(hash(self), u._make_tree())
+            else:
+                tree.create_node(u.tag, hash(u), parent=hash(self))
+
+        return tree
+
     def __repr__(self):
-        return ""
+        return str(self._make_tree())
