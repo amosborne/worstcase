@@ -31,8 +31,8 @@ class Param:
         pretty = "0.{sigfig}g~P".format(sigfig=Config.sigfig)
         tag = "{tag}: ".format(tag=self.tag) if self.tag else ""
         nom = ("{nom:" + pretty + "} (nom), ").format(nom=self.nom.to_compact())
-        lb = ("{lb:" + pretty + "} (min), ").format(lb=self.lb.to_compact())
-        ub = ("{ub:" + pretty + "} (max)").format(ub=self.ub.to_compact())
+        lb = ("{lb:" + pretty + "} (lb), ").format(lb=self.lb.to_compact())
+        ub = ("{ub:" + pretty + "} (ub)").format(ub=self.ub.to_compact())
         return tag + nom + lb + ub
 
 

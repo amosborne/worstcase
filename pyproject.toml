@@ -11,7 +11,6 @@ repository = "https://github.com/amosborne/worstcase"
 python = "3.9"
 networkx = "^2.5.1"
 pyDOE = "^0.3.8"
-numpy = "^1.20.3"
 Pint = "^0.17"
 treelib = "^1.6.1"
 
