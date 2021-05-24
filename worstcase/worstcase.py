@@ -126,11 +126,14 @@ class ParamBuilder(Param):
             k: v.build() for k, v in self.bind.arguments.items() if isinstance(v, Param)
         }
 
+        kwargs = {**self.bind.arguments}
+        kwargs.update({k: v.nom for (k, v) in predecessors.items()})
+        nom = self.func(**kwargs)
+
         # EXTREME VALUE ANALYSIS
         if self.mode is Mode.EV:
             lbmin, ubmax = float("inf"), -float("inf")
             for combo in product((min, max), repeat=len(predecessors)):
-                kwargs = {**self.bind.arguments}
                 kwargs.update(
                     {
                         k: get(v.lb, v.ub)
@@ -145,15 +148,23 @@ class ParamBuilder(Param):
                 lbmin = result if result < lbmin else lbmin
                 ubmax = result if result > ubmax else ubmax
 
-            kwargs.update({k: v.nom for (k, v) in predecessors.items()})
-            nom = self.func(**kwargs)
             return Param(nom=nom, lb=lbmin, ub=ubmax, tag=self.tag)
 
         # MONTE CARLO ANALYSIS
         else:
             matrix = lhs(len(predecessors), samples=Config.n)
+            results = []
 
-            print(matrix)
+            for row in matrix:
+                kwargs.update(
+                    {
+                        k: (x * (v.ub - v.lb) + v.lb)
+                        for (x, (k, v)) in zip(row, predecessors.items())
+                    }
+                )
+                results.append(self.func(**kwargs))
+
+            return Param(nom=nom, lb=min(results), ub=max(results), tag=self.tag)
 
     def _make_tree(self):
         tree = Tree()
