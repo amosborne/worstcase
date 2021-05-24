@@ -1,8 +1,14 @@
 from enum import Enum, auto
 from inspect import Signature
 from itertools import product
+from types import SimpleNamespace
 
 import networkx as nx  # type: ignore
+from pint import Quantity, UnitRegistry  # type: ignore
+from pyDOE import lhs  # type: ignore
+
+Config = SimpleNamespace(n=5000, sigfig=3)
+Unit = UnitRegistry()
 
 
 class Mode(Enum):
@@ -11,22 +17,32 @@ class Mode(Enum):
 
 
 class Param:
-    def __init__(self, nom, lb, ub):
+    def __init__(self, nom, lb, ub, tag):
         self.nom = nom  # nominal value
         self.lb = lb  # lower bound
         self.ub = ub  # upper bound
+        self.tag = tag  # string identifier
 
     def build(self):
         return self
 
+    def __repr__(self):
+        pretty = "0.{sigfig}g~P".format(sigfig=Config.sigfig)
+        tag = "{tag}: ".format(tag=self.tag) if self.tag else ""
+        nom = ("{nom:" + pretty + "} (nom), ").format(nom=self.nom.to_compact())
+        lb = ("{lb:" + pretty + "} (min), ").format(lb=self.lb.to_compact())
+        ub = ("{ub:" + pretty + "} (max)").format(ub=self.ub.to_compact())
+        return tag + nom + lb + ub
+
 
 class ParamBuilder(Param):
-    def __init__(self, func, mode, *args, **kwargs):
+    def __init__(self, func, mode, *args, tag="", **kwargs):
         sig = Signature.from_callable(func)
 
         self.func = func
         self.bind = sig.bind_partial(*args, **kwargs)
         self.mode = mode
+        self.tag = tag
 
         predecessors = filter(
             lambda v: isinstance(v, Param), self.bind.arguments.values()
@@ -56,53 +72,59 @@ class ParamBuilder(Param):
         return self.build().ub
 
     @staticmethod
-    def byrange(nom, lb, ub):
-        return Param(nom, lb, ub)
+    def byrange(nom, lb, ub, tag="", unit=Unit([])):
+        return Param(nom * unit, lb * unit, ub * unit, tag)
 
     @staticmethod
-    def bytol(nom, tol, rel):
+    def bytol(nom, tol, rel, tag="", unit=Unit([])):
         tol = nom * tol if rel else tol
-        return Param(nom, nom - tol, nom + tol)
+        return Param(nom * unit, (nom - tol) * unit, (nom + tol) * unit, tag)
 
     @classmethod
-    def ev(cls, *args, **kwargs):
+    def ev(cls, *args, tag="", **kwargs):
         def decorator(func):
-            return cls(func, Mode.EV, *args, **kwargs)
+            return cls(func, Mode.EV, *args, **kwargs, tag=tag)
 
         return decorator
 
     @classmethod
-    def mc(cls, *args, **kwargs):
+    def mc(cls, *args, tag="", **kwargs):
         def decorator(func):
-            return cls(func, Mode.MC, *args, **kwargs)
+            return cls(func, Mode.MC, *args, **kwargs, tag=tag)
 
         return decorator
 
-    def __call__(self, *args, **kwargs):
+    def __call__(self, *args, tag=None, **kwargs):
+        # If no arguments, return the built parameter.
+        if not args and not kwargs:
+            return self.build()
+
+        # Otherwise, update the binding arguments.
         newsig = Signature.from_callable(self.func)
         newbind = newsig.bind_partial(*args, **kwargs)
         finalbind = {**self.bind.arguments}
         finalbind.update(newbind.arguments)
 
+        # If all arguments are not parameters, return a single value.
         try:
             bind = newsig.bind(**finalbind)
-            params = list(
-                filter(lambda v: isinstance(v, Param), bind.arguments.values())
-            )
+            params = [p for p in bind.arguments.values() if isinstance(p, Param)]
             if not params:
                 return self.func(**finalbind)
         except TypeError:
             pass
 
-        return ParamBuilder(self.func, self.mode, **finalbind)
+        # Otherwise, return a new parameter builder.
+        tag = self.tag if tag is None else tag
+        return ParamBuilder(self.func, self.mode, tag=tag, **finalbind)
 
     def build(self):
         predecessors = {
             k: v.build() for k, v in self.bind.arguments.items() if isinstance(v, Param)
         }
 
+        # EXTREME VALUE ANALYSIS
         if self.mode is Mode.EV:
-
             lbmin, ubmax = float("inf"), -float("inf")
             for combo in product((min, max), repeat=len(predecessors)):
                 kwargs = {**self.bind.arguments}
@@ -113,12 +135,22 @@ class ParamBuilder(Param):
                     }
                 )
                 result = self.func(**kwargs)
+                if not isinstance(lbmin, Quantity):
+                    lbmin *= result.units
+                    ubmax *= result.units
+
                 lbmin = result if result < lbmin else lbmin
                 ubmax = result if result > ubmax else ubmax
 
             kwargs.update({k: v.nom for (k, v) in predecessors.items()})
             nom = self.func(**kwargs)
-            return Param(nom=nom, lb=lbmin, ub=ubmax)
+            return Param(nom=nom, lb=lbmin, ub=ubmax, tag=self.tag)
 
+        # MONTE CARLO ANALYSIS
         else:
-            pass
+            matrix = lhs(len(predecessors), samples=Config.n)
+
+            print(matrix)
+
+    def __repr__(self):
+        return ""
