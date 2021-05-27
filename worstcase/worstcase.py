@@ -4,7 +4,7 @@ from itertools import product
 from types import SimpleNamespace
 
 import networkx as nx  # type: ignore
-from pint import Quantity, UnitRegistry  # type: ignore
+from pint import UnitRegistry  # type: ignore
 from pyDOE import lhs  # type: ignore
 from treelib import Tree  # type: ignore
 
@@ -19,46 +19,90 @@ class Mode(Enum):
 
 class Param:
     def __init__(self, nom, lb, ub, tag):
+        assert lb <= nom <= ub, "Parameter bounds out of order."
+
         self.nom = nom  # nominal value
         self.lb = lb  # lower bound
         self.ub = ub  # upper bound
         self.tag = tag  # string identifier
 
-    def build(self):
-        return self
-
     def __repr__(self):
         pretty = "0.{sigfig}g~P".format(sigfig=Config.sigfig)
         tag = "{tag}: ".format(tag=self.tag) if self.tag else ""
-        nom = ("{nom:" + pretty + "} (nom), ").format(nom=self.nom.to_compact())
-        lb = ("{lb:" + pretty + "} (lb), ").format(lb=self.lb.to_compact())
-        ub = ("{ub:" + pretty + "} (ub)").format(ub=self.ub.to_compact())
+        nom = ("{nom:" + pretty + "} (nom), ").format(
+            nom=self.nom.to_base_units().to_compact()
+        )
+        lb = ("{lb:" + pretty + "} (lb), ").format(
+            lb=self.lb.to_base_units().to_compact()
+        )
+        ub = ("{ub:" + pretty + "} (ub)").format(
+            ub=self.ub.to_base_units().to_compact()
+        )
         return tag + nom + lb + ub
 
 
+def bind_kwargs(func, *args, **kwargs):
+    sig = Signature.from_callable(func)
+    binding = sig.bind_partial(*args, **kwargs)
+    binding.apply_defaults()
+    return binding.arguments
+
+
 class ParamBuilder(Param):
-    def __init__(self, func, mode, *args, tag="", **kwargs):
-        sig = Signature.from_callable(func)
-
+    def __init__(self, func, mode, *args, tag=None, **kwargs):
         self.func = func
-        self.bind = sig.bind_partial(*args, **kwargs)
         self.mode = mode
-        self.tag = tag
+        self.tag = func.__name__ if tag is None else tag
+        self.kwargs = bind_kwargs(func, *args, **kwargs)
 
-        predecessors = filter(
-            lambda v: isinstance(v, Param), self.bind.arguments.values()
-        )
+        assert nx.is_tree(self.graph), "Composed worst case analysis must be acyclic."
 
+    def __call__(self, *args, tag=None, **kwargs):
+        new_kwargs = self.kwargs.copy()
+        new_kwargs.update(bind_kwargs(self.func, *args, **kwargs))
+
+        # If a complete binding is made and none are params, return func eval
+        if not [v for v in new_kwargs.values() if isinstance(v, Param)]:
+            try:
+                Signature.from_callable(self.func).bind(**new_kwargs)
+                return self.func(**new_kwargs)
+            except TypeError:
+                pass
+
+        # If no arguments are supplied, return the built param
+        if not args and not kwargs and tag is None:
+            return self.build()
+
+        # Otherwise, return a new parambuilder with an updated binding
+        tag = self.tag if tag is None else tag
+        return ParamBuilder(self.func, self.mode, tag=tag, **new_kwargs)
+
+    def ss(self, params, tag=None):
+        params = [params] if not isinstance(params, list) else params
+
+        kwargs = self.kwargs.copy()
+        for k, v in kwargs.items():
+            if v in params or not isinstance(v, Param):
+                continue
+            elif not isinstance(v, ParamBuilder):
+                kwargs[k] = v.nom
+            else:
+                kwargs[k] = v.ss(params)
+
+        tag = self.tag if tag is None else tag
+        return self(tag=tag, **kwargs)
+
+    @property
+    def graph(self):
         graph = nx.DiGraph()
         graph.add_node(self)
-        for pred in predecessors:
+        for pred in [v for v in self.kwargs.values() if isinstance(v, Param)]:
             graph.add_node(pred)
-            graph.add_edge(pred, self, mode=mode)
+            graph.add_edge(pred, self, mode=self.mode)
             if isinstance(pred, ParamBuilder):
                 graph = nx.compose(graph, pred.graph)
 
-        assert nx.is_tree(graph), "Composed worst case analysis must be acyclic."
-        self.graph = graph
+        return graph
 
     @property
     def nom(self):
@@ -84,102 +128,50 @@ class ParamBuilder(Param):
     @classmethod
     def ev(cls, *args, tag=None, **kwargs):
         def decorator(func):
-            newtag = func.__name__ if tag is None else tag
-            return cls(func, Mode.EV, *args, **kwargs, tag=newtag)
+            return cls(func, Mode.EV, *args, **kwargs, tag=tag)
 
         return decorator
 
     @classmethod
     def mc(cls, *args, tag=None, **kwargs):
         def decorator(func):
-            newtag = func.__name__ if tag is None else tag
-            return cls(func, Mode.MC, *args, **kwargs, tag=newtag)
+            return cls(func, Mode.MC, *args, **kwargs, tag=tag)
 
         return decorator
 
-    def __call__(self, *args, tag=None, **kwargs):
-        # Update the binding arguments.
-        newsig = Signature.from_callable(self.func)
-        newbind = newsig.bind_partial(*args, **kwargs)
-        finalbind = {**self.bind.arguments}
-        finalbind.update(newbind.arguments)
-
-        # If all arguments are not parameters, return a single value.
-        try:
-            bind = newsig.bind(**finalbind)
-            params = [p for p in bind.arguments.values() if isinstance(p, Param)]
-            if not params:
-                return self.func(**finalbind)
-        except TypeError:
-            pass
-
-        # If no arguments, return the built parameter.
-        if not args and not kwargs:
-            return self.build()
-
-        # Otherwise, return a new parameter builder.
-        tag = self.func.__name__ if tag is None else tag
-        return ParamBuilder(self.func, self.mode, tag=tag, **finalbind)
-
-    def ss(self, params, tag=None):
-        if not isinstance(params, list):
-            params = [params]
-
-        bind = {**self.bind.arguments}
-        for k, v in bind.items():
-            if v not in params:
-                if isinstance(v, ParamBuilder):
-                    builder = v.ss(params)
-                    built = builder()
-                    if not isinstance(built, Param):
-                        bind[k] = built
-                    else:
-                        bind[k] = builder
-                elif isinstance(v, Param):
-                    bind[k] = v.nom
-
-        tag = self.func.__name__ if tag is None else tag
-        return ParamBuilder(self.func, self.mode, tag=tag, **bind)
-
     def build(self):
-        predecessors = {
-            k: v.build() for k, v in self.bind.arguments.items() if isinstance(v, Param)
-        }
+        preds = {k: v for k, v in self.kwargs.items() if isinstance(v, Param)}
+        preds_lbub = {k: (v.lb, v.ub) for k, v in preds.items()}
+        preds_nom = {k: v.nom for k, v in preds.items()}
 
-        kwargs = {**self.bind.arguments}
-        kwargs.update({k: v.nom for (k, v) in predecessors.items()})
+        kwargs = self.kwargs.copy()
+        kwargs.update(preds_nom)
         nom = self.func(**kwargs)
 
         # EXTREME VALUE ANALYSIS
         if self.mode is Mode.EV:
-            lbmin, ubmax = float("inf"), -float("inf")
-            for combo in product((min, max), repeat=len(predecessors)):
+            lbmin, ubmax = float("inf") * Unit([]), -float("inf") * Unit([])
+            for combo in product((min, max), repeat=len(preds)):
                 kwargs.update(
-                    {
-                        k: get(v.lb, v.ub)
-                        for get, (k, v) in zip(combo, predecessors.items())
-                    }
+                    {k: get(*lbub) for get, (k, lbub) in zip(combo, preds_lbub.items())}
                 )
                 result = self.func(**kwargs)
-                if not isinstance(lbmin, Quantity):
-                    lbmin *= result.units
-                    ubmax *= result.units
 
-                lbmin = result if result < lbmin else lbmin
-                ubmax = result if result > ubmax else ubmax
+                lbmin = result if result.magnitude < lbmin.magnitude else lbmin
+                ubmax = result if result.magnitude > ubmax.magnitude else ubmax
 
             return Param(nom=nom, lb=lbmin, ub=ubmax, tag=self.tag)
 
         # MONTE CARLO ANALYSIS
         else:
-            matrix = lhs(len(predecessors), samples=Config.n)
+            matrix = lhs(len(preds), samples=Config.n)
             results = []
 
             for row in matrix:
                 kwargs.update(
                     {
-                        k: (x * (v.ub - v.lb) + v.lb)
-                        for (x, (k, v)) in zip(row, predecessors.items())
+                        k: (x * (ub - lb) + lb)
+                        for (x, (k, (lb, ub))) in zip(row, preds_lbub.items())
                     }
                 )
                 results.append(self.func(**kwargs))
