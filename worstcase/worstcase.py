@@ -20,6 +20,7 @@ class Mode(Enum):
 class Param:
     def __init__(self, nom, lb, ub, tag):
         assert lb <= nom <= ub, "Parameter bounds out of order."
+        assert lb.u == nom.u == ub.u
 
         self.nom = nom  # nominal value
         self.lb = lb  # lower bound
@@ -29,16 +30,52 @@ class Param:
     def __repr__(self):
         pretty = "0.{sigfig}g~P".format(sigfig=Config.sigfig)
         tag = "{tag}: ".format(tag=self.tag) if self.tag else ""
-        nom = ("{nom:" + pretty + "} (nom), ").format(
-            nom=self.nom.to_base_units().to_compact()
-        )
-        lb = ("{lb:" + pretty + "} (lb), ").format(
-            lb=self.lb.to_base_units().to_compact()
-        )
-        ub = ("{ub:" + pretty + "} (ub)").format(
-            ub=self.ub.to_base_units().to_compact()
-        )
+        nom = ("{nom:" + pretty + "} (nom), ").format(nom=self.nom.to_compact())
+        lb = ("{lb:" + pretty + "} (lb), ").format(lb=self.lb.to_compact())
+        ub = ("{ub:" + pretty + "} (ub)").format(ub=self.ub.to_compact())
         return tag + nom + lb + ub
+
+    def check(self, dimension):
+        return self.nom.check(dimension)
+
+    @property
+    def dimensionality(self):
+        return self.nom.dimensionality
+
+    def is_compatible_with(self, other, *contexts, **ctx_kwargs):
+        return self.nom.is_compatible_with(other, *contexts, **ctx_kwargs)
+
+    def ito(self, other=None, *contexts, **ctx_kwargs):
+        self.lb.ito(other, *contexts, **ctx_kwargs)
+        self.nom.ito(other, *contexts, **ctx_kwargs)
+        self.ub.ito(other, *contexts, **ctx_kwargs)
+        return self
+
+    def ito_base_units(self):
+        self.lb.ito_base_units()
+        self.nom.ito_base_units()
+        self.ub.ito_base_units()
+        return self
+
+    def ito_reduced_units(self):
+        self.lb.ito_reduced_units()
+        self.nom.ito_reduced_units()
+        self.ub.ito_reduced_units()
+        return self
+
+    def ito_root_units(self):
+        self.lb.ito_root_units()
+        self.nom.ito_root_units()
+        self.ub.ito_root_units()
+        return self
+
+    @property
+    def units(self):
+        return self.nom.units
+
+    @property
+    def u(self):
+        return self.units
 
 
 def bind_kwargs(func, *args, **kwargs):
@@ -150,15 +187,15 @@ class ParamBuilder(Param):
 
         # EXTREME VALUE ANALYSIS
         if self.mode is Mode.EV:
-            lbmin, ubmax = float("inf") * Unit([]), -float("inf") * Unit([])
+            lbmin, ubmax = float("inf") * nom.u, -float("inf") * nom.u
             for combo in product((min, max), repeat=len(preds)):
                 kwargs.update(
                     {k: get(*lbub) for get, (k, lbub) in zip(combo, preds_lbub.items())}
                 )
                 result = self.func(**kwargs)
 
-                lbmin = result if result.magnitude < lbmin.magnitude else lbmin
-                ubmax = result if result.magnitude > ubmax.magnitude else ubmax
+                lbmin = result if result.m < lbmin.m else lbmin
+                ubmax = result if result.m > ubmax.m else ubmax
 
             return Param(nom=nom, lb=lbmin, ub=ubmax, tag=self.tag)
 

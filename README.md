@@ -166,3 +166,18 @@ relspd-sens (mc)
 
 relspd-sens: 29.04 m/s (nom), 28.59 m/s (lb), 29.49 m/s (ub)
 ```
+
+*Params* implement a few of the Pint *Quantity* methods for usability.
+
+```python
+assert spd_total.check("[length]/[time]")
+# also try: spd_total.dimensionality
+
+print(spd_total.units)  # meter / second
+# also try: spd_total.u
+
+print(spd_total().ito(wca.unit("km/hr")))  # spd_total: 104.5 km/hr (nom)...
+# also try: spd_total().ito_base_units()
+#           spd_total().ito_reduced_units()
+#           spd_total().ito_root_units()
+```
