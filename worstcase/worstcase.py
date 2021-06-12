@@ -4,39 +4,17 @@ from itertools import product
 from types import SimpleNamespace
 
 import networkx as nx  # type: ignore
-from pint import UnitRegistry  # type: ignore
+from pint import Quantity, UnitRegistry  # type: ignore
 from pyDOE import lhs  # type: ignore
 from treelib import Tree  # type: ignore
 
-Config = SimpleNamespace(n=5000, sigfig=3)
+Config = SimpleNamespace(n=5000, sigfig=4)
 Unit = UnitRegistry()
 
 
-class Mode(Enum):
-    EV = auto()
-    MC = auto()
-
-
-class Param:
-    def __init__(self, nom, lb, ub, tag):
-        assert lb <= nom <= ub, "Parameter bounds out of order."
-        assert lb.u == nom.u == ub.u
-
-        self.nom = nom  # nominal value
-        self.lb = lb  # lower bound
-        self.ub = ub  # upper bound
-        self.tag = tag  # string identifier
-
-    def __repr__(self):
-        pretty = "0.{sigfig}g~P".format(sigfig=Config.sigfig)
-        tag = "{tag}: ".format(tag=self.tag) if self.tag else ""
-        nom = ("{nom:" + pretty + "} (nom), ").format(nom=self.nom.to_compact())
-        lb = ("{lb:" + pretty + "} (lb), ").format(lb=self.lb.to_compact())
-        ub = ("{ub:" + pretty + "} (ub)").format(ub=self.ub.to_compact())
-        return tag + nom + lb + ub
-
-    def check(self, dimension):
-        return self.nom.check(dimension)
+class AbstractParameter:
+    def check(self, dimensionality):
+        return self.nom.check(dimensionality)
 
     @property
     def dimensionality(self):
@@ -44,6 +22,46 @@ class Param:
 
     def is_compatible_with(self, other, *contexts, **ctx_kwargs):
         return self.nom.is_compatible_with(other, *contexts, **ctx_kwargs)
+
+    @property
+    def units(self):
+        return self.nom.units
+
+    @property
+    def u(self):
+        return self.units
+
+
+class Parameter(AbstractParameter):
+    def __init__(self, nom, lb, ub, tag):
+        nom = nom if isinstance(nom, Quantity) else nom * Unit([])
+        lb = lb if isinstance(lb, Quantity) else lb * Unit([])
+        ub = ub if isinstance(ub, Quantity) else ub * Unit([])
+
+        assert lb.u == nom.u == ub.u, "Parameter bounds have inconsistent units."
+        assert lb <= nom <= ub, "Parameter bounds are out of order."
+
+        self.nom = nom  # nominal quantity
+        self.lb = lb  # lower bound quantity
+        self.ub = ub  # upper bound quantity
+        self.tag = tag  # string identifier
+
+    @staticmethod
+    def byrange(nom, lb, ub, tag=""):
+        return Parameter(nom, lb, ub, tag)
+
+    @staticmethod
+    def bytol(nom, tol, rel, tag=""):
+        tol = nom * tol if rel else tol
+        return Parameter(nom, nom - tol, nom + tol, tag)
+
+    def __repr__(self):
+        pretty = "0.{sigfig}G~P".format(sigfig=Config.sigfig)
+        tag = "{tag}: ".format(tag=self.tag) if self.tag else ""
+        nom = ("{nom:" + pretty + "} (nom), ").format(nom=self.nom.to_compact())
+        lb = ("{lb:" + pretty + "} (lb), ").format(lb=self.lb.to_compact())
+        ub = ("{ub:" + pretty + "} (ub)").format(ub=self.ub.to_compact())
+        return tag + nom + lb + ub
 
     def ito(self, other=None, *contexts, **ctx_kwargs):
         self.lb.ito(other, *contexts, **ctx_kwargs)
@@ -69,164 +87,147 @@ class Param:
         self.ub.ito_root_units()
         return self
 
-    @property
-    def units(self):
-        return self.nom.units
 
-    @property
-    def u(self):
-        return self.units
+class By(Enum):
+    EV = auto()
+    MC = auto()
 
 
-def bind_kwargs(func, *args, **kwargs):
-    sig = Signature.from_callable(func)
-    binding = sig.bind_partial(*args, **kwargs)
-    binding.apply_defaults()
-    return binding.arguments
-
-
-class ParamBuilder(Param):
-    def __init__(self, func, mode, *args, tag=None, **kwargs):
+class Derivative(AbstractParameter):
+    def __init__(self, func, method, tag, *args, **kwargs):
         self.func = func
-        self.mode = mode
-        self.tag = func.__name__ if tag is None else tag
-        self.kwargs = bind_kwargs(func, *args, **kwargs)
+        self.method = method
+        self.tag = tag
 
-        assert nx.is_tree(self.graph), "Composed worst case analysis must be acyclic."
+        funcsig = Signature.from_callable(func)
+        binding = funcsig.bind_partial(*args, **kwargs)
+        self.kwargs = binding.arguments
+
+    @staticmethod
+    def byev(*args, tag="", **kwargs):
+        def decorator(func):
+            return Derivative(func, By.EV, tag, *args, **kwargs)
+
+        return decorator
+
+    @staticmethod
+    def bymc(*args, tag="", **kwargs):
+        def decorator(func):
+            return Derivative(func, By.MC, tag, *args, **kwargs)
+
+        return decorator
+
+    @property
+    def nom(self):
+        return self.derive().nom
+
+    @property
+    def lb(self):
+        return self.derive().lb
+
+    @property
+    def ub(self):
+        return self.derive().ub
 
     def __call__(self, *args, tag=None, **kwargs):
+        # If args/kwargs form a complete binding with no AbstractParameters
+        # then return a simple call to the underlying function.
+        try:
+            funcsig = Signature.from_callable(self.func)
+            binding = funcsig.bind(*args, **kwargs)
+            kwargs = binding.arguments
+
+            is_abstract_parameter = [
+                isinstance(v, AbstractParameter) for v in kwargs.values()
+            ]
+            if not any(is_abstract_parameter):
+                return self.func(**kwargs)
+        except TypeError:
+            pass
+
+        # If no arguments are supplied then return the derived Parameter.
+        if not any([args, kwargs, tag]):
+            return self.derive()
+
+        # Otherwise return a new Derivative with an updated binding.
         new_kwargs = self.kwargs.copy()
-        new_kwargs.update(bind_kwargs(self.func, *args, **kwargs))
+        funcsig = Signature.from_callable(self.func)
+        binding = funcsig.bind_partial(*args, **kwargs)
+        new_kwargs.update(binding.arguments)
 
-        # If a complete binding is made and none are params, return func eval
-        if not [v for v in new_kwargs.values() if isinstance(v, Param)]:
-            try:
-                Signature.from_callable(self.func).bind(**new_kwargs)
-                return self.func(**new_kwargs)
-            except TypeError:
-                pass
-
-        # If no arguments are supplied, return the built param
-        if not args and not kwargs and tag is None:
-            return self.build()
-
-        # Otherwise, return a new parambuilder with an updated binding
         tag = self.tag if tag is None else tag
-        return ParamBuilder(self.func, self.mode, tag=tag, **new_kwargs)
+        return Derivative(self.func, self.method, tag, **new_kwargs)
 
-    def ss(self, params, tag=None):
-        params = [params] if not isinstance(params, list) else params
+    def derive(self):
+        # Construct a directed graph representing the interdependency of
+        # all AbstractParameters needed to derive this Derivative.
+        graph = self.graph
+        cycles = list(nx.simple_cycles(graph))
+        assert not cycles, "Derivative cannot have cyclical dependencies."
+        nx.draw(graph)
 
-        kwargs = self.kwargs.copy()
-        for k, v in kwargs.items():
-            if v in params or not isinstance(v, Param):
+        # Traverse the graph (in any order). For each node, get the set
+        # of ancestor nodes. If no ancestor node contains an out-edge
+        # to a node not already in the set of ancestor nodes plus the
+        # the current descendant node, flag the current descendant node.
+        for node in graph.nodes:
+            if isinstance(node, Parameter):
+                graph.nodes[node]["eval"] = False
                 continue
-            elif not isinstance(v, ParamBuilder):
-                kwargs[k] = v.nom
-            else:
-                kwargs[k] = v.ss(params)
 
-        tag = self.tag if tag is None else tag
-        return self(tag=tag, **kwargs)
+            ancestors = nx.ancestors(graph, node)
+            eval_group = ancestors.copy()
+            eval_group.add(node)
+            out_edges = graph.out_edges(ancestors)
+            out_nodes = {e[1] for e in out_edges}
+
+            graph.nodes[node]["eval"] = eval_group >= out_nodes
+
+        # Continuously loop through the nodes in the graph flagged for
+        # evaluation until only the final derived Parameter remains.
+        while len(graph.nodes) > 1:
+            eval_nodes = [n for (n, d) in graph.nodes(data=True) if d["eval"]]
+
+            for node in eval_nodes:
+                # Skip nodes depending on nodes flagged for evaluation.
+                ancestors = nx.ancestors(graph, node)
+                if any([anc in eval_nodes for anc in ancestors]):
+                    continue
+
+                # Evaluate using the current nodes method (EV or MC).
+                # This will overrule any depending node's method.
+                if node.method is By.EV:
+                    param = extreme_value(graph, node)
+                else:
+                    param = monte_carlo(graph, node)
+
+                # Replace the ancestor nodes and current node with
+                # the newly derived Parameter.
+                graph.remove_nodes_from(ancestors)
+                graph.remove_node(node)
+                graph.add_node(param, **{"eval": False})
+
+        return list(graph.nodes)[0]
 
     @property
     def graph(self):
         graph = nx.DiGraph()
         graph.add_node(self)
-        for pred in [v for v in self.kwargs.values() if isinstance(v, Param)]:
-            graph.add_node(pred)
-            graph.add_edge(pred, self, mode=self.mode)
-            if isinstance(pred, ParamBuilder):
-                graph = nx.compose(graph, pred.graph)
+        predecessors = [
+            v for v in self.kwargs.values() if isinstance(v, AbstractParameter)
+        ]
+        for predecessor in predecessors:
+            graph.add_node(predecessor)
+            graph.add_edge(predecessor, self, method=self.method)
+            if isinstance(predecessor, Derivative):
+                graph = nx.compose(graph, predecessor.graph)
 
         return graph
 
-    @property
-    def nom(self):
-        return self.build().nom
 
-    @property
-    def lb(self):
-        return self.build().lb
+def extreme_value(graph, node):
+    return 1
 
-    @property
-    def ub(self):
-        return self.build().ub
 
-    @staticmethod
-    def byrange(nom, lb, ub, tag="", unit=Unit([])):
-        return Param(nom * unit, lb * unit, ub * unit, tag)
-
-    @staticmethod
-    def bytol(nom, tol, rel, tag="", unit=Unit([])):
-        tol = nom * tol if rel else tol
-        return Param(nom * unit, (nom - tol) * unit, (nom + tol) * unit, tag)
-
-    @classmethod
-    def ev(cls, *args, tag=None, **kwargs):
-        def decorator(func):
-            return cls(func, Mode.EV, *args, **kwargs, tag=tag)
-
-        return decorator
-
-    @classmethod
-    def mc(cls, *args, tag=None, **kwargs):
-        def decorator(func):
-            return cls(func, Mode.MC, *args, **kwargs, tag=tag)
-
-        return decorator
-
-    def build(self):
-        preds = {k: v for k, v in self.kwargs.items() if isinstance(v, Param)}
-        preds_lbub = {k: (v.lb, v.ub) for k, v in preds.items()}
-        preds_nom = {k: v.nom for k, v in preds.items()}
-
-        kwargs = self.kwargs.copy()
-        kwargs.update(preds_nom)
-        nom = self.func(**kwargs)
-
-        # EXTREME VALUE ANALYSIS
-        if self.mode is Mode.EV:
-            lbmin, ubmax = float("inf") * nom.u, -float("inf") * nom.u
-            for combo in product((min, max), repeat=len(preds)):
-                kwargs.update(
-                    {k: get(*lbub) for get, (k, lbub) in zip(combo, preds_lbub.items())}
-                )
-                result = self.func(**kwargs)
-
-                lbmin = result if result.m < lbmin.m else lbmin
-                ubmax = result if result.m > ubmax.m else ubmax
-
-            return Param(nom=nom, lb=lbmin, ub=ubmax, tag=self.tag)
-
-        # MONTE CARLO ANALYSIS
-        else:
-            matrix = lhs(len(preds), samples=Config.n)
-            results = []
-
-            for row in matrix:
-                kwargs.update(
-                    {
-                        k: (x * (ub - lb) + lb)
-                        for (x, (k, (lb, ub))) in zip(row, preds_lbub.items())
-                    }
-                )
-                results.append(self.func(**kwargs))
-
-            return Param(nom=nom, lb=min(results), ub=max(results), tag=self.tag)
-
-    def _make_tree(self):
-        tree = Tree()
-        mode = " (mc)" if self.mode is Mode.MC else " (ev)"
-        tree.create_node(self.tag + mode, hash(self))
-
-        for (u, v) in self.graph.in_edges(self):
-            if isinstance(u, ParamBuilder):
-                tree.paste(hash(self), u._make_tree())
-            else:
-                tree.create_node(u.tag, hash(u), parent=hash(self))
-
-        return tree
-
-    def __repr__(self):
-        return str(self._make_tree())
+def monte_carlo(graph, node):
+    return None
