@@ -24,12 +24,12 @@ def test_param():
         wca.param.byrange(0, 1, -1)
 
 
-def test_parambuilder_onelayer():
+def test_derive_onelayer():
 
     A = wca.param.byrange(5, 0, 10)
 
     # create a partial binding to extreme value
-    @wca.param.ev(A)
+    @wca.derive.byev(A)
     def Cev(a, b):
         return a * b
 
@@ -41,9 +41,6 @@ def test_parambuilder_onelayer():
     Dev = Cev(b=12)
     assert Dev.nom == 60 and Dev.lb == 0 and Dev.ub == 120
 
-    # rebind, no params = return func eval
-    assert Dev(11) == 132
-
 
 def test_evmc_onelayer():
 
@@ -51,12 +48,12 @@ def test_evmc_onelayer():
     B = wca.param.bytol(2, 1, False)
 
     # create a full binding to extreme value
-    @wca.param.ev(A, B)
+    @wca.derive.byev(A, B)
     def Cev(a, b):
         return a * b
 
     # create a full binding to monte carlo
-    @wca.param.mc(A, B)
+    @wca.derive.bymc(A, B)
     def Cmc(a, b):
         return a * b
 

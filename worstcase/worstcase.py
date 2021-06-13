@@ -6,7 +6,6 @@ from types import SimpleNamespace
 import networkx as nx  # type: ignore
 from pint import Quantity, UnitRegistry  # type: ignore
 from pyDOE import lhs  # type: ignore
-from treelib import Tree  # type: ignore
 
 Config = SimpleNamespace(n=5000, sigfig=4)
 Unit = UnitRegistry()
@@ -130,6 +129,7 @@ class Derivative(AbstractParameter):
         return self.derive().ub
 
     def __call__(self, *args, tag=None, **kwargs):
+
         # If args/kwargs form a complete binding with no AbstractParameters
         # then return a simple call to the underlying function.
         try:
@@ -159,12 +159,12 @@ class Derivative(AbstractParameter):
         return Derivative(self.func, self.method, tag, **new_kwargs)
 
     def derive(self):
+
         # Construct a directed graph representing the interdependency of
         # all AbstractParameters needed to derive this Derivative.
         graph = self.graph
         cycles = list(nx.simple_cycles(graph))
         assert not cycles, "Derivative cannot have cyclical dependencies."
-        nx.draw(graph)
 
         # Traverse the graph (in any order). For each node, get the set
         # of ancestor nodes. If no ancestor node contains an out-edge
@@ -211,11 +211,13 @@ class Derivative(AbstractParameter):
 
     @property
     def graph(self):
+
         graph = nx.DiGraph()
         graph.add_node(self)
         predecessors = [
             v for v in self.kwargs.values() if isinstance(v, AbstractParameter)
         ]
+
         for predecessor in predecessors:
             graph.add_node(predecessor)
             graph.add_edge(predecessor, self, method=self.method)
@@ -225,9 +227,80 @@ class Derivative(AbstractParameter):
         return graph
 
 
-def extreme_value(graph, node):
-    return 1
+def eval_graph(graph, eval_node, prim_init):
+
+    # Get the ancestors and primitives (no in-edges) of the eval-node.
+    ancestors = nx.ancestors(graph, eval_node)
+    primitives = {anc for anc in ancestors if graph.in_degree(anc) == 0}
+
+    # Initialize the set of nodes to evaluate.
+    eval_group = ancestors.copy()
+    eval_group.add(eval_node)
+
+    # Reset the node values to None or initialize the primitives.
+    for node in eval_group:
+        if node in primitives:
+            graph.nodes[node]["val"] = prim_init(node)
+        else:
+            graph.nodes[node]["val"] = None
+
+    # Continuously bubble-up evalations to the eval-node.
+    while graph.nodes[eval_node]["val"] is None:
+        for node in eval_group:
+            # Skip any nodes already evaluated.
+            if graph.nodes[node]["val"] is not None:
+                continue
+
+            # Evaluate those nodes with fully evaluated predecessors.
+            if all(
+                [
+                    graph.nodes[pred]["val"] is not None
+                    for pred in graph.predecessors(node)
+                ]
+            ):
+                kwargs = node.kwargs.copy()
+                for kw_key, kw_val in kwargs.items():
+                    if kw_val in graph.predecessors(node):
+                        kwargs[kw_key] = graph.nodes[kw_val]["val"]
+
+                graph.nodes[node]["val"] = node.func(**kwargs)
+
+    # Return the eval-node final evaluation.
+    return graph.nodes[eval_node]["val"]
 
 
-def monte_carlo(graph, node):
-    return None
+def extreme_value(graph, eval_node):
+    # Get the ancestors and primitives (no in-edges) of the eval-node.
+    ancestors = nx.ancestors(graph, eval_node)
+    primitives = {anc for anc in ancestors if graph.in_degree(anc) == 0}
+
+    # Calculate the nominal value.
+    nom = eval_graph(graph, eval_node, lambda p: p.nom)
+
+    # Loop through all max/min combinations for all primitives.
+    lbmin, ubmax = float("inf") * nom.u, -float("inf") * nom.u
+    for combo in product((min, max), repeat=len(primitives)):
+        prims = {p: c(p.lb, p.ub) for p, c in zip(primitives, combo)}
+        result = eval_graph(graph, eval_node, lambda p: prims[p])
+        lbmin = result if result < lbmin else lbmin
+        ubmax = result if result > ubmax else ubmax
+
+    return Parameter(nom, lbmin, ubmax, eval_node.tag)
+
+
+def monte_carlo(graph, eval_node):
+    # Get the ancestors and primitives (no in-edges) of the eval-node.
+    ancestors = nx.ancestors(graph, eval_node)
+    primitives = {anc for anc in ancestors if graph.in_degree(anc) == 0}
+
+    # Calculate the nominal value.
+    nom = eval_graph(graph, eval_node, lambda p: p.nom)
+
+    # Run n Monte Carlo evaluations with Latin Hypercube Sampling.
+    matrix = lhs(len(primitives), samples=Config.n)
+    results = []
+    for row in matrix:
+        prims = {p: (x * (p.ub - p.lb) + p.lb) for p, x in zip(primitives, row)}
+        results.append(eval_graph(graph, eval_node, lambda p: prims[p]))
+
+    return Parameter(nom, min(results), max(results), eval_node.tag)
