@@ -12,4 +12,4 @@ This package is designed for engineering applications where worst case analysis 
 
 ## Usage
 
-See the example usage (here)[https://github.com/amosborne/worstcase/blob/master/examples/readme.ipynb].
+See the example usage [here](https://github.com/amosborne/worstcase/blob/master/examples/readme.ipynb).
