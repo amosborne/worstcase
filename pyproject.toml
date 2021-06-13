@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "worstcase"
-version = "0.3"
+version = "0.3.0"
 description = "Worst case analysis and sensitivity studies using Extreme Value and/or Monte Carlo methods."
 authors = ["amosborne <amosborne@users.noreply.github.com>"]
 license = "MIT"
