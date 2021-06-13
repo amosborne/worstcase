@@ -128,6 +128,9 @@ class Derivative(AbstractParameter):
     def ub(self):
         return self.derive().ub
 
+    def __repr__(self):
+        return self.derive().__repr__()
+
     def __call__(self, *args, tag=None, **kwargs):
 
         # If args/kwargs form a complete binding with no AbstractParameters
@@ -203,9 +206,13 @@ class Derivative(AbstractParameter):
 
                 # Replace the ancestor nodes and current node with
                 # the newly derived Parameter.
+                graph.add_node(param, **{"eval": False, "orig": node})
+                out_edges = graph.out_edges(node, data=True)
+                for nout, nin, data in out_edges:
+                    graph.add_edge(param, nin, **data)
+
                 graph.remove_nodes_from(ancestors)
                 graph.remove_node(node)
-                graph.add_node(param, **{"eval": False})
 
         return list(graph.nodes)[0]
 
@@ -260,8 +267,14 @@ def eval_graph(graph, eval_node, prim_init):
             ):
                 kwargs = node.kwargs.copy()
                 for kw_key, kw_val in kwargs.items():
-                    if kw_val in graph.predecessors(node):
-                        kwargs[kw_key] = graph.nodes[kw_val]["val"]
+                    predecessors = graph.predecessors(node)
+                    predecessors = {
+                        graph.nodes[pred].get("orig", pred): pred
+                        for pred in predecessors
+                    }
+
+                    if kw_val in predecessors:
+                        kwargs[kw_key] = graph.nodes[predecessors[kw_val]]["val"]
 
                 graph.nodes[node]["val"] = node.func(**kwargs)
 
