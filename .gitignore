@@ -1,3 +1,8 @@
+# latex
+*.synctex.gz
+*.aux
+*.log
+
 # poetry
 *.lock
 

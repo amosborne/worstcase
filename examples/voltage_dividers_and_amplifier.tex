@@ -1,0 +1,35 @@
+\documentclass{article}
+\usepackage{circuitikz}
+
+\begin{document}
+
+\begin{minipage}{0.9\textwidth}
+\begin{circuitikz}
+\draw
+(0,0) node[ground]{} to[R=$R_2$]
+(0,3) to[R=$R_1$]
+(0,8) node[vcc]{VCC}
+(2,0) node[ground]{} to[R=$R_4$]
+(2,5) to[R=$R_3$]
+(2,8) node[vcc]{VIN}
+(4,4) node[op amp, noinv input up](OA){GAIN}
+(OA.+) to[short, -*] (2,4.5)
+(OA.-) to[short, -*] (0,3.5)
+(OA.out) to[R=$R_6$] (7,4) to[R=$R_5$] (7,8) node[vcc]{VCC}
+(7,4) to[short, *-o] ++(1,0) node[above]{OUT}
+;
+\end{circuitikz}
+\end{minipage}
+\begin{minipage}{0.4\textwidth}
+VCC = 4.8V to 5.1V\\
+VIN = 11.9V to 12.05V\\
+
+R1, R2 = 10kOhm +/- 10\%\\
+R3 = 50kOhm +/- 5\%\\
+R4 = 20kOhm +/- 5\%\\
+R5, R6 = 10kOhm +/- 1\%\\
+
+GAIN = 1V/V to 1.2V/V
+\end{minipage}
+
+\end{document}
