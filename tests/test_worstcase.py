@@ -58,5 +58,5 @@ def test_evmc_onelayer():
         return a * b
 
     assert Cev.nom == 10 and Cmc.nom == 10
-    assert Cev.lb == 0 and Cmc.lb == pytest.approx(0, abs=1)
-    assert Cev.ub == 30 and Cmc.ub == pytest.approx(30, abs=1)
+    assert Cev.lb == 0 and Cmc.lb == pytest.approx(0, abs=2)
+    assert Cev.ub == 30 and Cmc.ub == pytest.approx(30, abs=2)

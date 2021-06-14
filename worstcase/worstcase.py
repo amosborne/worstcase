@@ -86,6 +86,11 @@ class Parameter(AbstractParameter):
         self.ub.ito_root_units()
         return self
 
+    def graph(self):
+        graph = nx.DiGraph()
+        graph.add_node(self, latest=self)
+        return graph
+
 
 class By(Enum):
     EV = auto()
@@ -161,11 +166,55 @@ class Derivative(AbstractParameter):
         tag = self.tag if tag is None else tag
         return Derivative(self.func, self.method, tag, **new_kwargs)
 
-    def derive(self):
+    def graph(self, ss=None):
+
+        # Identify the AbstractParameter predecessors to this Derivative.
+        is_abstractparam = lambda arg: isinstance(arg, AbstractParameter)  # noqa: E731
+        preds = filter(is_abstractparam, self.kwargs.values())
+
+        # Build the directed graph recursively, where:
+        # - each node is an AbstractParameter
+        # - each node has a "latest" field to hold the latest
+        #   AbstractParameter assignment which will be used in evaluation
+        # - each directed edge has a "method" field (By.MC or By.EV)
+        graph = nx.DiGraph()
+        graph.add_node(self, latest=self)
+        for pred in preds:
+            graph.add_edge(pred, self, method=self.method)
+            graph = nx.compose(graph, pred.graph())
+
+        # A sensitivity study is provided by the "ss" argument, a list of
+        # AbstractParameters. A sensitivity study operates only over Parameters;
+        # if Derivatives are provided they are used only to identify those
+        # Parameters which are ancestors to those Derivatives. Any Parameters
+        # which are not identified for the sensitivity study are replaced such
+        # that their bounds are the same as their nominal value.
+        if ss is not None:
+            ss = set(ss) if isinstance(ss, list) else {ss}
+            is_param = lambda arg: isinstance(arg, Parameter)  # noqa: E731
+            ss_params = set()
+            for abstractparam in ss:
+                if is_param(abstractparam):
+                    ss_params.add(abstractparam)
+                else:
+                    ancestors = nx.ancestors(graph, abstractparam)
+                    ss_params |= set(filter(is_param, ancestors))
+
+            for node in graph.nodes:
+                if is_param(node) and node not in ss_params:
+                    latest = Parameter(node.nom, node.nom, node.nom, node.tag)
+                    graph.nodes[node]["latest"] = latest
+
+        return graph
+
+    def ss(self, ss):
+        return self.derive(ss)
+
+    def derive(self, ss=None):
 
         # Construct a directed graph representing the interdependency of
         # all AbstractParameters needed to derive this Derivative.
-        graph = self.graph
+        graph = self.graph(ss)
         cycles = list(nx.simple_cycles(graph))
         assert not cycles, "Derivative cannot have cyclical dependencies."
 
@@ -175,126 +224,105 @@ class Derivative(AbstractParameter):
         # the current descendant node, flag the current descendant node.
         for node in graph.nodes:
             if isinstance(node, Parameter):
-                graph.nodes[node]["eval"] = False
-                continue
-
-            ancestors = nx.ancestors(graph, node)
-            eval_group = ancestors.copy()
-            eval_group.add(node)
-            out_edges = graph.out_edges(ancestors)
-            out_nodes = {e[1] for e in out_edges}
-
-            graph.nodes[node]["eval"] = eval_group >= out_nodes
+                graph.nodes[node]["flag"] = False
+            else:
+                ancestors = nx.ancestors(graph, node)
+                out_edges = graph.out_edges(ancestors)
+                out_nodes = {edge[1] for edge in out_edges}
+                eval_group = ancestors.copy()
+                eval_group.add(node)
+                graph.nodes[node]["flag"] = eval_group >= out_nodes
 
         # Continuously loop through the nodes in the graph flagged for
         # evaluation until only the final derived Parameter remains.
-        while len(graph.nodes) > 1:
-            eval_nodes = [n for (n, d) in graph.nodes(data=True) if d["eval"]]
-
+        # Skip nodes depending on nodes flagged for evaluation.
+        while not isinstance(graph.nodes[self]["latest"], Parameter):
+            eval_nodes = [n for (n, d) in graph.nodes(data=True) if d["flag"]]
             for node in eval_nodes:
-                # Skip nodes depending on nodes flagged for evaluation.
                 ancestors = nx.ancestors(graph, node)
-                if any([anc in eval_nodes for anc in ancestors]):
-                    continue
+                if not any([anc in eval_nodes for anc in ancestors]):
+                    # Evaluate using the current nodes method (EV or MC).
+                    # This will overrule any depending node's method.
+                    if node.method is By.EV:
+                        param = extreme_value(graph, node)
+                    else:
+                        param = monte_carlo(graph, node)
 
-                # Evaluate using the current nodes method (EV or MC).
-                # This will overrule any depending node's method.
-                if node.method is By.EV:
-                    param = extreme_value(graph, node)
-                else:
-                    param = monte_carlo(graph, node)
+                    # Update the current node with the latest evaluation.
+                    graph.nodes[node]["latest"] = param
+                    graph.nodes[node]["flag"] = False
 
-                # Replace the ancestor nodes and current node with
-                # the newly derived Parameter.
-                graph.add_node(param, **{"eval": False, "orig": node})
-                out_edges = graph.out_edges(node, data=True)
-                for nout, nin, data in out_edges:
-                    graph.add_edge(param, nin, **data)
-
-                graph.remove_nodes_from(ancestors)
-                graph.remove_node(node)
-
-        return list(graph.nodes)[0]
-
-    @property
-    def graph(self):
-
-        graph = nx.DiGraph()
-        graph.add_node(self)
-        predecessors = [
-            v for v in self.kwargs.values() if isinstance(v, AbstractParameter)
-        ]
-
-        for predecessor in predecessors:
-            graph.add_node(predecessor)
-            graph.add_edge(predecessor, self, method=self.method)
-            if isinstance(predecessor, Derivative):
-                graph = nx.compose(graph, predecessor.graph)
-
-        return graph
+        return graph.nodes[self]["latest"]
 
 
-def eval_graph(graph, eval_node, prim_init):
+def eval_graph(graph, eval_node, eval_init):
 
-    # Get the ancestors and primitives (no in-edges) of the eval-node.
-    ancestors = nx.ancestors(graph, eval_node)
-    primitives = {anc for anc in ancestors if graph.in_degree(anc) == 0}
+    # Construct the evaluation group and initialize.
+    graph.nodes[eval_node]["val"] = None
+    ancestors = set(nx.ancestors(graph, eval_node)) | {eval_node}
+    eval_group = set()
+    for anc in ancestors:
+        if isinstance(graph.nodes[anc]["latest"], Derivative):
+            graph.nodes[anc]["val"] = None
+            eval_group.add(anc)
+            for pred in graph.predecessors(anc):
+                if isinstance(graph.nodes[pred]["latest"], Parameter):
+                    graph.nodes[pred]["val"] = eval_init[pred]
+                    eval_group.add(pred)
 
-    # Initialize the set of nodes to evaluate.
-    eval_group = ancestors.copy()
-    eval_group.add(eval_node)
-
-    # Reset the node values to None or initialize the primitives.
-    for node in eval_group:
-        if node in primitives:
-            graph.nodes[node]["val"] = prim_init(node)
-        else:
-            graph.nodes[node]["val"] = None
-
-    # Continuously bubble-up evalations to the eval-node.
+    # Continuously bubble-up evaluations to the eval-node.
     while graph.nodes[eval_node]["val"] is None:
         for node in eval_group:
             # Skip any nodes already evaluated.
-            if graph.nodes[node]["val"] is not None:
+            if not graph.nodes[node]["val"] is None:
                 continue
 
-            # Evaluate those nodes with fully evaluated predecessors.
-            if all(
-                [
-                    graph.nodes[pred]["val"] is not None
-                    for pred in graph.predecessors(node)
-                ]
+            # Skip any nodes with unevaluated predecessors.
+            if any(
+                graph.nodes[pred]["val"] is None for pred in graph.predecessors(node)
             ):
-                kwargs = node.kwargs.copy()
-                for kw_key, kw_val in kwargs.items():
-                    predecessors = graph.predecessors(node)
-                    predecessors = {
-                        graph.nodes[pred].get("orig", pred): pred
-                        for pred in predecessors
-                    }
+                continue
 
-                    if kw_val in predecessors:
-                        kwargs[kw_key] = graph.nodes[predecessors[kw_val]]["val"]
+            # Construct the keyword arguments.
+            kwargs = node.kwargs.copy()
+            for k, v in kwargs.items():
+                if v in graph.predecessors(node):
+                    kwargs[k] = graph.nodes[v]["val"]
 
-                graph.nodes[node]["val"] = node.func(**kwargs)
+            graph.nodes[node]["val"] = node.func(**kwargs)
 
     # Return the eval-node final evaluation.
     return graph.nodes[eval_node]["val"]
 
 
-def extreme_value(graph, eval_node):
-    # Get the ancestors and primitives (no in-edges) of the eval-node.
-    ancestors = nx.ancestors(graph, eval_node)
-    primitives = {anc for anc in ancestors if graph.in_degree(anc) == 0}
+def eval_nominal(graph, eval_node):
+    # Get the Parameters to initialize of the eval-node.
+    ancestors = set(nx.ancestors(graph, eval_node)) | {eval_node}
+    params = set()
+    for anc in ancestors:
+        if isinstance(graph.nodes[anc]["latest"], Derivative):
+            for pred in graph.predecessors(anc):
+                if isinstance(graph.nodes[pred]["latest"], Parameter):
+                    params.add(pred)
 
     # Calculate the nominal value.
-    nom = eval_graph(graph, eval_node, lambda p: p.nom)
+    eval_init = {p: p.nom for p in params}
+    nom = eval_graph(graph, eval_node, eval_init)
+
+    return params, nom
+
+
+def extreme_value(graph, eval_node):
+    params, nom = eval_nominal(graph, eval_node)
 
     # Loop through all max/min combinations for all primitives.
     lbmin, ubmax = float("inf") * nom.u, -float("inf") * nom.u
-    for combo in product((min, max), repeat=len(primitives)):
-        prims = {p: c(p.lb, p.ub) for p, c in zip(primitives, combo)}
-        result = eval_graph(graph, eval_node, lambda p: prims[p])
+    for combo in product((min, max), repeat=len(params)):
+        eval_init = {}
+        for p, c in zip(params, combo):
+            latest = graph.nodes[p]["latest"]
+            eval_init[p] = c(latest.lb, latest.ub)
+        result = eval_graph(graph, eval_node, eval_init)
         lbmin = result if result < lbmin else lbmin
         ubmax = result if result > ubmax else ubmax
 
@@ -302,18 +330,16 @@ def extreme_value(graph, eval_node):
 
 
 def monte_carlo(graph, eval_node):
-    # Get the ancestors and primitives (no in-edges) of the eval-node.
-    ancestors = nx.ancestors(graph, eval_node)
-    primitives = {anc for anc in ancestors if graph.in_degree(anc) == 0}
-
-    # Calculate the nominal value.
-    nom = eval_graph(graph, eval_node, lambda p: p.nom)
+    params, nom = eval_nominal(graph, eval_node)
 
     # Run n Monte Carlo evaluations with Latin Hypercube Sampling.
-    matrix = lhs(len(primitives), samples=Config.n)
+    matrix = lhs(len(params), samples=Config.n)
     results = []
     for row in matrix:
-        prims = {p: (x * (p.ub - p.lb) + p.lb) for p, x in zip(primitives, row)}
-        results.append(eval_graph(graph, eval_node, lambda p: prims[p]))
+        eval_init = {}
+        for p, x in zip(params, row):
+            latest = graph.nodes[p]["latest"]
+            eval_init[p] = x * (latest.ub - latest.lb) + latest.lb
+        results.append(eval_graph(graph, eval_node, eval_init))
 
     return Parameter(nom, min(results), max(results), eval_node.tag)
