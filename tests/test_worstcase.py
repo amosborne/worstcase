@@ -2,8 +2,6 @@ import pytest
 
 import worstcase as wca
 
-wca.config.n = 1000
-
 
 def test_param():
 
@@ -53,7 +51,7 @@ def test_evmc_onelayer():
         return a * b
 
     # create a full binding to monte carlo
-    @wca.derive.bymc(A, B)
+    @wca.derive.bymc(A, B, n=5000)
     def Cmc(a, b):
         return a * b
 

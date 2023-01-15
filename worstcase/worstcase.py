@@ -1,13 +1,11 @@
 from enum import Enum, auto
 from inspect import Signature
 from itertools import product
-from types import SimpleNamespace
 
 import networkx as nx  # type: ignore
 from pint import Quantity, UnitRegistry  # type: ignore
 from pyDOE import lhs  # type: ignore
 
-Config = SimpleNamespace(n=5000, sigfig=4)
 Unit = UnitRegistry()
 
 
@@ -32,7 +30,7 @@ class AbstractParameter:
 
 
 class Parameter(AbstractParameter):
-    def __init__(self, nom, lb, ub, tag):
+    def __init__(self, nom, lb, ub, tag, sigfig):
         nom = nom if isinstance(nom, Quantity) else nom * Unit([])
         lb = lb if isinstance(lb, Quantity) else lb * Unit([])
         ub = ub if isinstance(ub, Quantity) else ub * Unit([])
@@ -44,18 +42,19 @@ class Parameter(AbstractParameter):
         self.lb = lb  # lower bound quantity
         self.ub = ub  # upper bound quantity
         self.tag = tag  # string identifier
+        self.sigfig = sigfig  # string significant digits
 
     @staticmethod
-    def byrange(nom, lb, ub, tag=""):
-        return Parameter(nom, lb, ub, tag)
+    def byrange(nom, lb, ub, tag="", sigfig=4):
+        return Parameter(nom, lb, ub, tag, sigfig)
 
     @staticmethod
-    def bytol(nom, tol, rel, tag=""):
+    def bytol(nom, tol, rel, tag="", sigfig=4):
         tol = nom * tol if rel else tol
-        return Parameter(nom, nom - tol, nom + tol, tag)
+        return Parameter(nom, nom - tol, nom + tol, tag, sigfig)
 
     def __repr__(self):
-        pretty = "0.{sigfig}G~P".format(sigfig=Config.sigfig)
+        pretty = "0.{sigfig}G~P".format(sigfig=self.sigfig)
         tag = "{tag}: ".format(tag=self.tag) if self.tag else ""
         nom = ("{nom:" + pretty + "} (nom), ").format(nom=self.nom.to_compact())
         lb = ("{lb:" + pretty + "} (lb), ").format(lb=self.lb.to_compact())
@@ -98,26 +97,28 @@ class By(Enum):
 
 
 class Derivative(AbstractParameter):
-    def __init__(self, func, method, tag, *args, **kwargs):
+    def __init__(self, func, method, tag, sigfig, *args, n=None, **kwargs):
         self.func = func
         self.method = method
         self.tag = tag
+        self.sigfig = sigfig
+        self.n = n
 
         funcsig = Signature.from_callable(func)
         binding = funcsig.bind_partial(*args, **kwargs)
         self.kwargs = binding.arguments
 
     @staticmethod
-    def byev(*args, tag="", **kwargs):
+    def byev(*args, tag="", sigfig=4, **kwargs):
         def decorator(func):
-            return Derivative(func, By.EV, tag, *args, **kwargs)
+            return Derivative(func, By.EV, tag, sigfig, *args, **kwargs)
 
         return decorator
 
     @staticmethod
-    def bymc(*args, tag="", **kwargs):
+    def bymc(*args, tag="", sigfig=4, n=1000, **kwargs):
         def decorator(func):
-            return Derivative(func, By.MC, tag, *args, **kwargs)
+            return Derivative(func, By.MC, tag, sigfig, *args, n=n, **kwargs)
 
         return decorator
 
@@ -136,7 +137,7 @@ class Derivative(AbstractParameter):
     def __repr__(self):
         return self.derive().__repr__()
 
-    def __call__(self, *args, tag=None, **kwargs):
+    def __call__(self, *args, tag=None, sigfig=None, **kwargs):
 
         # If args/kwargs form a complete binding with no AbstractParameters
         # then return a simple call to the underlying function.
@@ -164,7 +165,8 @@ class Derivative(AbstractParameter):
         new_kwargs.update(binding.arguments)
 
         tag = self.tag if tag is None else tag
-        return Derivative(self.func, self.method, tag, **new_kwargs)
+        sigfig = self.sigfig if sigfig is None else sigfig
+        return Derivative(self.func, self.method, tag, sigfig, **new_kwargs)
 
     def graph(self, ss=None):
 
@@ -202,7 +204,9 @@ class Derivative(AbstractParameter):
 
             for node in graph.nodes:
                 if is_param(node) and node not in ss_params:
-                    latest = Parameter(node.nom, node.nom, node.nom, node.tag)
+                    latest = Parameter(
+                        node.nom, node.nom, node.nom, node.tag, node.sigfig
+                    )
                     graph.nodes[node]["latest"] = latest
 
         return graph
@@ -326,14 +330,14 @@ def extreme_value(graph, eval_node):
         lbmin = result if result < lbmin else lbmin
         ubmax = result if result > ubmax else ubmax
 
-    return Parameter(nom, lbmin, ubmax, eval_node.tag)
+    return Parameter(nom, lbmin, ubmax, eval_node.tag, eval_node.sigfig)
 
 
 def monte_carlo(graph, eval_node):
     params, nom = eval_nominal(graph, eval_node)
 
     # Run n Monte Carlo evaluations with Latin Hypercube Sampling.
-    matrix = lhs(len(params), samples=Config.n)
+    matrix = lhs(len(params), samples=eval_node.n)
     results = []
     for row in matrix:
         eval_init = {}
@@ -342,4 +346,4 @@ def monte_carlo(graph, eval_node):
             eval_init[p] = x * (latest.ub - latest.lb) + latest.lb
         results.append(eval_graph(graph, eval_node, eval_init))
 
-    return Parameter(nom, min(results), max(results), eval_node.tag)
+    return Parameter(nom, min(results), max(results), eval_node.tag, eval_node.sigfig)
