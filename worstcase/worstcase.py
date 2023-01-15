@@ -2,9 +2,9 @@ from enum import Enum, auto
 from inspect import Signature
 from itertools import product
 
-import networkx as nx  # type: ignore
-from pint import Quantity, UnitRegistry  # type: ignore
-from pyDOE import lhs  # type: ignore
+import networkx as nx
+from pint import Quantity, UnitRegistry
+from pyDOE import lhs
 
 Unit = UnitRegistry()
 
@@ -97,7 +97,7 @@ class By(Enum):
 
 
 class Derivative(AbstractParameter):
-    def __init__(self, func, method, tag, sigfig, *args, n=None, **kwargs):
+    def __init__(self, func, method, tag, sigfig, n, *args, **kwargs):
         self.func = func
         self.method = method
         self.tag = tag
@@ -109,16 +109,16 @@ class Derivative(AbstractParameter):
         self.kwargs = binding.arguments
 
     @staticmethod
-    def byev(*args, tag="", sigfig=4, **kwargs):
+    def byev(*args, tag="", sigfig=4, n=None, **kwargs):
         def decorator(func):
-            return Derivative(func, By.EV, tag, sigfig, *args, **kwargs)
+            return Derivative(func, By.EV, tag, sigfig, n, *args, **kwargs)
 
         return decorator
 
     @staticmethod
     def bymc(*args, tag="", sigfig=4, n=1000, **kwargs):
         def decorator(func):
-            return Derivative(func, By.MC, tag, sigfig, *args, n=n, **kwargs)
+            return Derivative(func, By.MC, tag, sigfig, n, *args, **kwargs)
 
         return decorator
 
@@ -137,7 +137,7 @@ class Derivative(AbstractParameter):
     def __repr__(self):
         return self.derive().__repr__()
 
-    def __call__(self, *args, tag=None, sigfig=None, **kwargs):
+    def __call__(self, *args, tag=None, sigfig=None, n=None, **kwargs):
 
         # If args/kwargs form a complete binding with no AbstractParameters
         # then return a simple call to the underlying function.
@@ -166,7 +166,8 @@ class Derivative(AbstractParameter):
 
         tag = self.tag if tag is None else tag
         sigfig = self.sigfig if sigfig is None else sigfig
-        return Derivative(self.func, self.method, tag, sigfig, **new_kwargs)
+        n = self.n if n is None else n
+        return Derivative(self.func, self.method, tag, sigfig, n, **new_kwargs)
 
     def graph(self, ss=None):
 
