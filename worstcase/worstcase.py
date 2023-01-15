@@ -124,7 +124,7 @@ class Derivative(AbstractParameter):
 
     @property
     def nom(self):
-        return self.derive().nom
+        return eval_nominal(self.graph(), self)[1]
 
     @property
     def lb(self):
