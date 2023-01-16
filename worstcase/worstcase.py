@@ -1,8 +1,10 @@
 from enum import Enum, auto
 from inspect import Signature
 from itertools import product
+from warnings import warn
 
 import networkx as nx
+import numpy as np
 from pint import Quantity, UnitRegistry
 from pyDOE import lhs
 
@@ -94,6 +96,7 @@ class Parameter(AbstractParameter):
 class By(Enum):
     EV = auto()
     MC = auto()
+    RSS = auto()
 
 
 class Derivative(AbstractParameter):
@@ -119,6 +122,13 @@ class Derivative(AbstractParameter):
     def bymc(*args, tag="", sigfig=4, n=1000, **kwargs):
         def decorator(func):
             return Derivative(func, By.MC, tag, sigfig, n, *args, **kwargs)
+
+        return decorator
+
+    @staticmethod
+    def byrss(*args, tag="", sigfig=4, n=None, **kwargs):
+        def decorator(func):
+            return Derivative(func, By.RSS, tag, sigfig, n, *args, **kwargs)
 
         return decorator
 
@@ -179,11 +189,10 @@ class Derivative(AbstractParameter):
         # - each node is an AbstractParameter
         # - each node has a "latest" field to hold the latest
         #   AbstractParameter assignment which will be used in evaluation
-        # - each directed edge has a "method" field (By.MC or By.EV)
         graph = nx.DiGraph()
         graph.add_node(self, latest=self)
         for pred in preds:
-            graph.add_edge(pred, self, method=self.method)
+            graph.add_edge(pred, self)
             graph = nx.compose(graph, pred.graph())
 
         # A sensitivity study is provided by the "ss" argument, a list of
@@ -246,12 +255,14 @@ class Derivative(AbstractParameter):
             for node in eval_nodes:
                 ancestors = nx.ancestors(graph, node)
                 if not any([anc in eval_nodes for anc in ancestors]):
-                    # Evaluate using the current nodes method (EV or MC).
+                    # Evaluate using the current nodes method (EV, MC, or RSS).
                     # This will overrule any depending node's method.
                     if node.method is By.EV:
                         param = extreme_value(graph, node)
-                    else:
+                    elif node.method is By.MC:
                         param = monte_carlo(graph, node)
+                    else:
+                        param = root_sum_square(graph, node)
 
                     # Update the current node with the latest evaluation.
                     graph.nodes[node]["latest"] = param
@@ -348,3 +359,33 @@ def monte_carlo(graph, eval_node):
         results.append(eval_graph(graph, eval_node, eval_init))
 
     return Parameter(nom, min(results), max(results), eval_node.tag, eval_node.sigfig)
+
+
+def root_sum_square(graph, eval_node):
+    params, nom = eval_nominal(graph, eval_node)
+
+    # For each parameter, calculate the result using both the lower and upper
+    # bounds while holding all other parameters at their nominal value.
+    lbs = []
+    ubs = []
+    for pvaried in params:
+        eval_init = {p: graph.nodes[p]["latest"].nom for p in params - {pvaried}}
+        eval_init[pvaried] = graph.nodes[pvaried]["latest"].lb
+        ret_lb = eval_graph(graph, eval_node, eval_init).m
+        eval_init[pvaried] = graph.nodes[pvaried]["latest"].ub
+        ret_ub = eval_graph(graph, eval_node, eval_init).m
+        ubs.append(max([ret_lb, ret_ub]))
+        lbs.append(min([ret_lb, ret_ub]))
+
+    # Define a metric to detect an asymmetric result and warn the user.
+    ub_deviation = np.array(ubs) - nom.m
+    lb_deviation = nom.m - np.array(lbs)
+    mean_deviation = (ub_deviation + lb_deviation) / 2
+    max_deviation = np.maximum(ub_deviation, lb_deviation)
+    if np.any(max_deviation > mean_deviation * 1.05):
+        warn("RSS method is not recommended for asymmetric derived parameters.")
+
+    # Compute the RSS (root-sum-square).
+    ub = nom.m + np.sqrt(np.sum(np.square(np.array(ubs) - nom.m)))
+    lb = nom.m - np.sqrt(np.sum(np.square(np.array(lbs) - nom.m)))
+    return Parameter(nom, lb * nom.u, ub * nom.u, eval_node.tag, eval_node.sigfig)

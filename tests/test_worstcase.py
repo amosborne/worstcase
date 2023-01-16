@@ -56,3 +56,18 @@ def test_derive_bymc():
         and C(a=6).ub == pytest.approx(8.1, abs=0.05)
     )
     assert C(a=6, b=2.05) == 8.05
+
+
+def test_derive_byrss():
+    A = param.bytol(1, 2, False)
+    B = param.bytol(2, 5, False)
+    C = derive.byrss(A, B)(lambda a, b: a * b)
+    assert C.nom == 2 and C.ub == pytest.approx(8.40312, abs=1e-5)
+
+
+def test_derive_byrss_warnasymmetric():
+    A = param.byrange(0, 0, 5)
+    B = param.bytol(0, 1, False)
+    C = derive.byrss(A, B)(lambda a, b: a + b)
+    with pytest.warns(UserWarning):
+        C()

@@ -1,7 +1,7 @@
 [tool.poetry]
 name = "worstcase"
 version = "0.4.0"
-description = "Worst case analysis and sensitivity studies. Extreme Value, Root-Mean-Square, Monte Carlo."
+description = "Worst case analysis and sensitivity studies. Extreme Value, Root-Sum-Square, Monte Carlo."
 authors = ["amosborne <amosborne@users.noreply.github.com>"]
 license = "MIT"
 readme = "README.md"
