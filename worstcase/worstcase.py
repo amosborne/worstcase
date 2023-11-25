@@ -1,3 +1,4 @@
+from collections import namedtuple
 from enum import Enum, auto
 from inspect import Signature
 from itertools import product
@@ -31,8 +32,13 @@ class AbstractParameter:
         return self.units
 
 
+Derivation = namedtuple("Derivation", "nom lb ub")
+
+
 class Parameter(AbstractParameter):
-    def __init__(self, nom, lb, ub, tag, sigfig):
+    def __init__(
+        self, nom, lb, ub, tag, sigfig, derivation=Derivation(nom={}, lb={}, ub={})
+    ):
         nom = nom if isinstance(nom, Quantity) else nom * Unit([])
         lb = lb if isinstance(lb, Quantity) else lb * Unit([])
         ub = ub if isinstance(ub, Quantity) else ub * Unit([])
@@ -45,6 +51,9 @@ class Parameter(AbstractParameter):
         self.ub = ub  # upper bound quantity
         self.tag = tag  # string identifier
         self.sigfig = sigfig  # string significant digits
+        self.derivation = (
+            derivation  # namedtuple, each field is a {parameter: quantity}
+        )
 
     @staticmethod
     def byrange(nom, lb, ub, tag="", sigfig=4):
@@ -143,6 +152,10 @@ class Derivative(AbstractParameter):
     @property
     def ub(self):
         return self.derive().ub
+
+    @property
+    def derivation(self):
+        return self.derive().derivation
 
     def __repr__(self):
         return self.derive().__repr__()
@@ -331,6 +344,8 @@ def eval_nominal(graph, eval_node):
 def extreme_value(graph, eval_node):
     params, nom = eval_nominal(graph, eval_node)
 
+    derivation_nom = {p: p.nom for p in params}
+
     # Loop through all max/min combinations for all primitives.
     lbmin, ubmax = float("inf") * nom.u, -float("inf") * nom.u
     for combo in product((min, max), repeat=len(params)):
@@ -339,10 +354,18 @@ def extreme_value(graph, eval_node):
             latest = graph.nodes[p]["latest"]
             eval_init[p] = c(latest.lb, latest.ub)
         result = eval_graph(graph, eval_node, eval_init)
-        lbmin = result if result < lbmin else lbmin
-        ubmax = result if result > ubmax else ubmax
 
-    return Parameter(nom, lbmin, ubmax, eval_node.tag, eval_node.sigfig)
+        if result < lbmin:
+            lbmin = result
+            derivation_lb = eval_init
+
+        if result > ubmax:
+            ubmax = result
+            derivation_ub = eval_init
+
+    derivation = Derivation(nom=derivation_nom, lb=derivation_lb, ub=derivation_ub)
+
+    return Parameter(nom, lbmin, ubmax, eval_node.tag, eval_node.sigfig, derivation)
 
 
 def monte_carlo(graph, eval_node):
@@ -358,6 +381,7 @@ def monte_carlo(graph, eval_node):
             eval_init[p] = x * (latest.ub - latest.lb) + latest.lb
         results.append(eval_graph(graph, eval_node, eval_init))
 
+    # todo: include derivation in the resulting parameter
     return Parameter(nom, min(results), max(results), eval_node.tag, eval_node.sigfig)
 
 
@@ -388,4 +412,6 @@ def root_sum_square(graph, eval_node):
     # Compute the RSS (root-sum-square).
     ub = nom.m + np.sqrt(np.sum(np.square(np.array(ubs) - nom.m)))
     lb = nom.m - np.sqrt(np.sum(np.square(np.array(lbs) - nom.m)))
+
+    # todo: include derivation in the resulting parameter
     return Parameter(nom, lb * nom.u, ub * nom.u, eval_node.tag, eval_node.sigfig)

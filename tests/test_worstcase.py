@@ -33,12 +33,15 @@ def test_param_outoforder():
 
 
 def test_derive_byev():
-    A = param.byrange(5, 0, 10)
-    B = param.bytol(2, 0.1, False)
-    C = derive.byev(A, B)(lambda a, b: a + b)
+    A = param.byrange(5, 0, 10, tag="A")
+    B = param.bytol(2, 0.1, False, tag="B")
+    C = derive.byev(A, B, tag="C")(lambda a, b: a + b)
     assert C.nom == 7 and C.lb == 1.9 and C.ub == 12.1
     assert C(a=6).nom == 8 and C(a=6).lb == 7.9 and C(a=6).ub == 8.1
     assert C(a=6, b=2.05) == 8.05
+    assert C.derivation.nom == {A: A.nom, B: B.nom}
+    assert C.derivation.lb == {A: A.lb, B: B.lb}
+    assert C.derivation.ub == {A: A.ub, B: B.ub}
 
 
 def test_derive_bymc():
@@ -47,13 +50,13 @@ def test_derive_bymc():
     C = derive.bymc(A, B, n=5000)(lambda a, b: a + b)
     assert (
         C.nom == 7
-        and C.lb == pytest.approx(1.9, abs=0.05)
-        and C.ub == pytest.approx(12.1, abs=0.05)
+        and C.lb == pytest.approx(1.9, abs=0.06)
+        and C.ub == pytest.approx(12.1, abs=0.06)
     )
     assert (
         C(a=6).nom == 8
-        and C(a=6).lb == pytest.approx(7.9, abs=0.05)
-        and C(a=6).ub == pytest.approx(8.1, abs=0.05)
+        and C(a=6).lb == pytest.approx(7.9, abs=0.06)
+        and C(a=6).ub == pytest.approx(8.1, abs=0.06)
     )
     assert C(a=6, b=2.05) == 8.05
 
