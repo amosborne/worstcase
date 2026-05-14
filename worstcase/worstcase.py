@@ -64,13 +64,39 @@ class Parameter(AbstractParameter):
         tol = nom * tol if rel else tol
         return Parameter(nom, nom - tol, nom + tol, tag, sigfig)
 
+    def formatter_string(self):
+        """Generate the formatter string for the current data"""
+        return "0.{sigfig}G#~P".format(sigfig=self.sigfig)
+
     def __repr__(self):
-        pretty = "0.{sigfig}G~P".format(sigfig=self.sigfig)
+        pretty = self.formatter_string()
         tag = "{tag}: ".format(tag=self.tag) if self.tag else ""
-        nom = ("{nom:" + pretty + "} (nom), ").format(nom=self.nom.to_compact())
-        lb = ("{lb:" + pretty + "} (lb), ").format(lb=self.lb.to_compact())
-        ub = ("{ub:" + pretty + "} (ub)").format(ub=self.ub.to_compact())
+        nom = ("{nom:" + pretty + "} (nom), ").format(nom=self.nom)
+        lb = ("{lb:" + pretty + "} (lb), ").format(lb=self.lb)
+        ub = ("{ub:" + pretty + "} (ub)").format(ub=self.ub)
+
         return tag + nom + lb + ub
+
+    def _repr_latex_(self):
+        upper_deviation = self.ub - self.nom
+        lower_deviation = self.nom - self.lb
+        pretty = self.formatter_string()
+        if f"{upper_deviation:{pretty}}" == f"{lower_deviation:{pretty}}":
+            return f"${self.nom:{pretty}} \\pm {upper_deviation:{pretty}}$"
+        else:
+            return (
+                f"${self.nom:{pretty}} \\,{{}}"
+                f"^{{+{upper_deviation:{pretty}}}}"
+                f"_{{-{lower_deviation:{pretty}}}}$"
+            )
+
+    def __format__(self, fmt_spec):
+        if not fmt_spec:
+            return str(self)
+        if fmt_spec == "L":
+            return self._repr_latex_()
+        else:
+            raise ValueError("Invalid format specifier")
 
     def apply(self, funcname, *args, **kwargs):
         """Apply a function to nominal and upper/lower bound values.
@@ -158,6 +184,12 @@ class Derivative(AbstractParameter):
 
     def __repr__(self):
         return self.derive().__repr__()
+
+    def _repr_latex_(self):
+        return self.derive()._repr_latex_()
+
+    def __format__(self, format_spec):
+        return self.derive().__format__(format_spec)
 
     def __call__(self, *args, tag=None, sigfig=None, n=None, **kwargs):
 
