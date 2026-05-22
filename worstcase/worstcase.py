@@ -7,7 +7,7 @@ from warnings import warn
 import networkx as nx
 import numpy as np
 from pint import Quantity, UnitRegistry
-from pyDOE import lhs
+from pydoe import lhs
 
 Unit = UnitRegistry()
 
