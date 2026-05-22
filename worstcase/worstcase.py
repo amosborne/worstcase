@@ -72,29 +72,28 @@ class Parameter(AbstractParameter):
         ub = ("{ub:" + pretty + "} (ub)").format(ub=self.ub.to_compact())
         return tag + nom + lb + ub
 
-    def ito(self, other=None, *contexts, **ctx_kwargs):
-        self.lb.ito(other, *contexts, **ctx_kwargs)
-        self.nom.ito(other, *contexts, **ctx_kwargs)
-        self.ub.ito(other, *contexts, **ctx_kwargs)
+    def apply(self, funcname, *args, **kwargs):
+        """Apply a function to nominal and upper/lower bound values.
+
+        Ex. `self.apply(ito_base_units)` will convert all values to base units
+            if using Pint values.
+        """
+        getattr(self.nom, funcname)(*args, **kwargs)
+        getattr(self.lb, funcname)(*args, **kwargs)
+        getattr(self.ub, funcname)(*args, **kwargs)
         return self
+
+    def ito(self, other=None, *contexts, **ctx_kwargs):
+        return self.apply("ito", other, *contexts, **ctx_kwargs)
 
     def ito_base_units(self):
-        self.lb.ito_base_units()
-        self.nom.ito_base_units()
-        self.ub.ito_base_units()
-        return self
+        return self.apply("ito_base_units")
 
     def ito_reduced_units(self):
-        self.lb.ito_reduced_units()
-        self.nom.ito_reduced_units()
-        self.ub.ito_reduced_units()
-        return self
+        return self.apply("ito_reduced_units")
 
     def ito_root_units(self):
-        self.lb.ito_root_units()
-        self.nom.ito_root_units()
-        self.ub.ito_root_units()
-        return self
+        return self.apply("ito_root_units")
 
     def graph(self):
         graph = nx.DiGraph()

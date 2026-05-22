@@ -27,9 +27,26 @@ def test_param_units():
     assert p.ito(unit("C/s")).nom.m == 1
 
 
+def test_param_pint():
+    p = param.bytol(1 * unit.feet / unit.hour, 0.1, True)
+    assert p.nom.u == unit.feet / unit.hour
+    assert p.nom.u == p.lb.u == p.ub.u
+    p.ito(unit.miles / unit.second)
+    assert p.nom.u == unit.mile / unit.second
+    assert p.nom.u == p.lb.u == p.ub.u
+    p.ito_base_units()
+    assert p.nom.u == unit.meter / unit.second
+    assert p.nom.u == p.lb.u == p.ub.u
+
+
 def test_param_outoforder():
     with pytest.raises(AssertionError):
         param.byrange(0, 1, 1)
+
+
+def test_param_different_units():
+    with pytest.raises(AssertionError):
+        param.byrange(1 * unit.second, 0.8 * unit.ms, 2 * unit.hour)
 
 
 def test_derive_byev():
