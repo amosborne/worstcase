@@ -149,6 +149,8 @@ class Parameter(AbstractParameter):
     def bytol(nom, tol, rel, tag="", sigfig=4):
         """Define a parameter by a tolerance.
 
+        Aliases `bytol_pct` and `bytol_abs` with boolean to pick between the two.
+
         Parameters:
             nom: nominal value
             tol: tolerance to be applied to nominal value
@@ -157,8 +159,41 @@ class Parameter(AbstractParameter):
             tag: name of the parameter
             sigfig: number of significant figures to print
         """
-        tol = nom * tol if rel else tol
+        if rel:
+            return Parameter.bytol_pct(nom, tol, tag, sigfig)
+        else:
+            return Parameter.bytol_abs(nom, tol, tag, sigfig)
+
+    @staticmethod
+    def bytol_pct(nom, pct, tag="", sigfig=4):
+        """Define a parameter by a percentage tolerance.
+
+        Parameters:
+            nom: nominal value
+            tol: percentage tolerance to be applied to nominal value (1 = 100%)
+            tag: name of the parameter
+            sigfig: number of significant figures to print
+        """
+        if AbstractParameter.get_units(pct) != 1:
+            raise ValueError("Percentage value cannot have units")
+
+        tol = nom * pct
         return Parameter(nom, nom - tol, nom + tol, tag, sigfig)
+
+    @staticmethod
+    def bytol_abs(nom, abs, tag="", sigfig=4):
+        """Define a parameter by an absolute tolerance.
+
+        Parameters:
+            nom: nominal value
+            abs: absolute tolerance to be applied to nominal value
+            tag: name of the parameter
+            sigfig: number of significant figures to print
+        """
+
+        if not AbstractParameter.compare_units(nom, abs):
+            raise ValueError("Nominal and absolute values must have compatible units")
+        return Parameter(nom, nom - abs, nom + abs, tag, sigfig)
 
     def formatter_string(self):
         """Generate the formatter string for the current data"""
