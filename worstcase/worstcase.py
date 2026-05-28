@@ -125,14 +125,12 @@ class Parameter(AbstractParameter):
         if not (lb <= nom <= ub):
             raise ValueError("Parameter bounds are out of order.")
 
-        self.nom = nom  # nominal quantity
-        self.lb = lb  # lower bound quantity
-        self.ub = ub  # upper bound quantity
-        self.tag = tag  # string identifier
-        self.sigfig = sigfig  # string significant digits
-        self.derivation = (
-            derivation  # namedtuple, each field is a {parameter: quantity}
-        )
+        self.nom = nom
+        self.lb = lb
+        self.ub = ub
+        self.tag = tag
+        self.sigfig = sigfig
+        self.derivation = derivation
 
     @staticmethod
     def byrange(nom, lb, ub, tag="", sigfig=4):
@@ -382,7 +380,8 @@ class Derivative(AbstractParameter):
         # all AbstractParameters needed to derive this Derivative.
         graph = self.graph(ss)
         cycles = list(nx.simple_cycles(graph))
-        assert not cycles, "Derivative cannot have cyclical dependencies."
+        if cycles:
+            raise RecursionError("Derivative cannot have cyclical dependencies.")
 
         # Traverse the graph (in any order). For each node, get the set
         # of ancestor nodes. If no ancestor node contains an out-edge

@@ -43,14 +43,20 @@ def test_param_pint():
 
 
 def test_param_outoforder():
-    with pytest.raises(AssertionError):
+    with pytest.raises(ValueError):
         param.byrange(0, 1, 1)
 
 
 def test_param_different_units():
-    with pytest.raises(AssertionError):
+    with pytest.raises(ValueError):
         param.byrange(1 * unit.second, 0.8 * unit.ms, 2 * unit.hour)
 
+<<<<<<< HEAD
+=======
+    with pytest.raises(ValueError):
+        param.byrange(1 * unit.second, 2, 0.5)
+
+>>>>>>> 9463217 (ref: change user-reachable assertions to exceptions)
 
 def test_derive_byev():
     A = param.byrange(5, 0, 10, tag="A")
