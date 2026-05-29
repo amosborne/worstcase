@@ -1,33 +1,187 @@
+import forallpeople as si
 import pytest
+import quantities as pq
+import unyt
+from astropy import units as u
+from pint import UnitRegistry
 
-from worstcase import derive, param, unit
+from worstcase import derive, param
 
-
-def test_param_byrange():
-    p = param.byrange(1.23456, 1, 2, tag="test_byrange", sigfig=3)
-    assert p.nom == 1.23456 and p.lb == 1 and p.ub == 2
-    assert str(p) == "test_byrange: 1.23 (nom), 1 (lb), 2 (ub)"
-    assert f"{p:L}" == "$1.23 \\,{}^{+0.765}_{-0.235}$"
-
-
-def test_param_bytol_absolute():
-    p = param.bytol(1, 0.123, False, tag="test_bytol_absolute", sigfig=2)
-    assert p.nom == 1 and p.lb == 0.877 and p.ub == 1.123
-    assert str(p) == "test_bytol_absolute: 1 (nom), 0.88 (lb), 1.1 (ub)"
-    assert f"{p:L}" == "$1 \\pm 0.12$"
+unit = UnitRegistry()
+si.environment("default", top_level=False)
 
 
-def test_param_bytol_relative():
-    p = param.bytol(2, 0.16, True, sigfig=2)
-    assert p.nom == 2 and p.lb == 1.68 and p.ub == 2.32
-    assert str(p) == "2 (nom), 1.7 (lb), 2.3 (ub)"
-    assert f"{p:L}" == "$2 \\pm 0.32$"
+@pytest.mark.parametrize(
+    "amp_unit, volt_unit, ohm_unit",
+    [
+        pytest.param(1, 1, 1, id="unitless"),
+        pytest.param(unit.A, unit.V, unit.ohm, id="pint"),
+        pytest.param(si.A, si.V, si.Ohm, id="forallpeople"),
+        pytest.param(u.A, u.V, u.Ohm, id="astropy"),
+        pytest.param(unyt.A, unyt.V, unyt.Ohm, id="unyt"),
+        pytest.param(pq.A, pq.V, pq.Ohm, id="python-quantities"),
+    ],
+)
+class TestUnitizedFunctions:
+    """Tests that are run across all supported unit libraries.
+
+    Note that all functions need to have all three units as argruments or
+        else pytest will complain. Not all tests use all units.
+    """
+
+    def test_param_byrange(self, amp_unit, volt_unit, ohm_unit):
+        p = param.byrange(1.23456 * amp_unit, 1 * amp_unit, 2 * amp_unit, sigfig=3)
+        assert (
+            p.nom == 1.23456 * amp_unit
+            and p.lb == 1 * amp_unit
+            and p.ub == 2 * amp_unit
+        )
+
+    def test_param_bytol_absolute(self, amp_unit, volt_unit, ohm_unit):
+        p = param.bytol_abs(1 * volt_unit, 0.123 * volt_unit, sigfig=2)
+        assert (
+            p.nom == 1 * volt_unit
+            and p.lb == 0.877 * volt_unit
+            and p.ub == 1.123 * volt_unit
+        )
+
+        p1 = param.bytol(1 * volt_unit, 0.123 * volt_unit, False, sigfig=2)
+        assert str(p) == str(p1)
+
+    def test_param_bytol_relative(self, amp_unit, volt_unit, ohm_unit):
+        p = param.bytol_pct(2 * ohm_unit, 0.16, sigfig=2)
+        assert (
+            p.nom == 2 * ohm_unit
+            and p.lb == 1.68 * ohm_unit
+            and p.ub == 2.32 * ohm_unit
+        )
+
+        p1 = param.bytol(2 * ohm_unit, 0.16, True, sigfig=2)
+        assert str(p) == str(p1)
+
+    def test_param_invalid_input(self, amp_unit, volt_unit, ohm_unit):
+        if amp_unit == 1:
+            # unitless units need not be tested
+            return
+
+        with pytest.raises(ValueError):
+            param.byrange(1 * amp_unit, 0.8 * ohm_unit, 2 * ohm_unit)
+
+        with pytest.raises(ValueError):
+            param.byrange(1 * volt_unit, 2, 0.5)
+
+        with pytest.raises(ValueError):
+            param.bytol_pct(1 * volt_unit, 2 * volt_unit)
+
+        with pytest.raises(ValueError):
+            param.bytol_abs(1 * amp_unit, 2)
+
+        param.bytol_abs(1 * amp_unit, 2 * amp_unit)
+
+    def test_derive_byev(self, amp_unit, volt_unit, ohm_unit):
+        A = param.byrange(5 * amp_unit, 0 * amp_unit, 10 * amp_unit, tag="A")
+        B = param.bytol(2 * amp_unit, 0.1 * amp_unit, False, tag="B")
+        C = derive.byev(A, B, tag="C")(lambda a, b: a + b)
+        assert (
+            C.nom == 7 * amp_unit and C.lb == 1.9 * amp_unit and C.ub == 12.1 * amp_unit
+        )
+        assert (
+            C(a=6 * amp_unit).nom == 8 * amp_unit
+            and C(a=6 * amp_unit).lb == 7.9 * amp_unit
+            and C(a=6 * amp_unit).ub == 8.1 * amp_unit
+        )
+        assert C(a=6 * amp_unit, b=2.05 * amp_unit) == 8.05 * amp_unit
+        assert C.derivation.nom == {A: A.nom, B: B.nom}
+        assert C.derivation.lb == {A: A.lb, B: B.lb}
+        assert C.derivation.ub == {A: A.ub, B: B.ub}
+
+    # in case the Monte Carlo sim is "unlucky" w/o having to crank up iterations
+    @pytest.mark.flaky(reruns=3, only_rerun=["AssertionError"])
+    def test_derive_bymc(self, amp_unit, volt_unit, ohm_unit):
+        A = param.byrange(5 * ohm_unit, 0 * ohm_unit, 10 * ohm_unit)
+        B = param.bytol(2 * ohm_unit, 0.1 * ohm_unit, False)
+        C = derive.bymc(A, B, n=5000)(lambda a, b: a + b)
+        assert (
+            C.nom == 7 * ohm_unit
+            and C.get_val(C.lb) == pytest.approx(1.9, abs=0.06)
+            and C.get_val(C.ub) == pytest.approx(12.1, abs=0.06)
+        )
+        assert (
+            C(a=6 * ohm_unit).nom == 8 * ohm_unit
+            and C.get_val(C(a=6 * ohm_unit).lb) == pytest.approx(7.9, abs=0.06)
+            and C.get_val(C(a=6 * ohm_unit).ub) == pytest.approx(8.1, abs=0.06)
+        )
+        assert C(a=6 * ohm_unit, b=2.05 * ohm_unit) == 8.05 * ohm_unit
+
+    def test_derive_byrss(self, amp_unit, volt_unit, ohm_unit):
+        A = param.bytol(1 * amp_unit, 2 * amp_unit, False)
+        B = param.bytol(2 * volt_unit, 5 * volt_unit, False)
+        C = derive.byrss(A, B)(lambda a, b: a * b)
+        assert C.nom == 2 * amp_unit * volt_unit
+        assert C.get_val(C.ub) == pytest.approx(8.40312, abs=1e-5)
+
+    def test_complex_byev(self, amp_unit, volt_unit, ohm_unit):
+        # define the resistor uncertainties
+        R1 = param.bytol(nom=100e-3 * ohm_unit, tol=0.01, rel=True, tag="R1")
+        R2 = param.bytol(nom=1.001e3 * ohm_unit, tol=0.01, rel=True, tag="R2")
+        R3 = param.bytol(nom=50.5e3 * ohm_unit, tol=0.01, rel=True, tag="R3")
+        R4 = param.bytol(nom=1.001e3 * ohm_unit, tol=0.01, rel=True, tag="R4")
+        R5 = param.bytol(nom=50.5e3 * ohm_unit, tol=0.01, rel=True, tag="R5")
+
+        # define the amplifier offset voltage
+        VOS = param.bytol(
+            nom=0 * volt_unit, tol=150e-6 * volt_unit, rel=False, tag="VOS"
+        )
+
+        # define the output voltage
+        @derive.byev(r1=R1, r2=R2, r3=R3, r4=R4, r5=R5, vos=VOS)
+        def VO(vbus, iload, r1, r2, r3, r4, r5, vos):
+            vp = vbus * r3 / (r2 + r3)
+            vn = vp + vos
+            vo = vn - (vbus - r1 * iload - vn) * r5 / r4
+            return vo
+
+        # define the end-to-end uncertainty
+        @derive.byev(r1=R1, r2=R2, r3=R3, r4=R4, r5=R5, vos=VOS)
+        def IUNC(r1, r2, r3, r4, r5, vos, vbus, iload):
+            vo = VO(vbus, iload, r1, r2, r3, r4, r5, vos)
+            return vo / VO(vbus, iload).nom * iload - iload
+
+        # calculate at 36V, 1A operating point
+        VOUT_1A = VO(vbus=36 * volt_unit, iload=1 * amp_unit, tag="VOUT_1A")
+        IUNC_1A = IUNC(vbus=36 * volt_unit, iload=1 * amp_unit, tag="IUNC_1A")
+
+        get_val = VOUT_1A.get_val
+        get_units = VOUT_1A.get_units
+
+        assert get_val(VOUT_1A.nom) == pytest.approx(5.045, abs=1e-3)
+        assert get_val(VOUT_1A.lb) == pytest.approx(3.647, abs=1e-3)
+        assert get_val(VOUT_1A.ub) == pytest.approx(6.387, abs=1e-3)
+        assert get_units(VOUT_1A.ub) == volt_unit
+        assert IUNC_1A.nom == 0 * amp_unit
+        assert get_val(IUNC_1A.lb) == pytest.approx(-0.277, abs=1e-3)
+        assert get_val(IUNC_1A.ub) == pytest.approx(0.266, abs=1e-3)
+        assert get_units(IUNC_1A.ub) == amp_unit
 
 
-def test_param_units():
-    p = param.bytol(1 * unit.A, 0.1, True)
-    assert p.units == unit.A
-    assert p.ito(unit("C/s")).nom.m == 1
+def test_param_str_repr():
+    p1 = param.bytol(2, 0.16, True, sigfig=2)
+    p2 = param.bytol(1, 0.123, False, tag="absolute", sigfig=2)
+    p3 = param.byrange(1.23456, 1, 2, tag="range", sigfig=3)
+
+    assert str(p1) == "2 (nom), 1.7 (lb), 2.3 (ub)"
+    assert str(p2) == "absolute: 1 (nom), 0.88 (lb), 1.1 (ub)"
+    assert str(p3) == "range: 1.23 (nom), 1 (lb), 2 (ub)"
+
+
+def test_param_latex_repr():
+    p1 = param.bytol(2, 0.16, True, sigfig=2)
+    p2 = param.bytol(1, 0.123, False, tag="absolute", sigfig=2)
+    p3 = param.byrange(1.23456, 1, 2, tag="range", sigfig=3)
+
+    assert f"{p1:L}" == "$2 \\pm 0.32$"
+    assert f"{p2:L}" == "$1 \\pm 0.12$"
+    assert f"{p3:L}" == "$1.23 \\,{}^{+0.765}_{-0.235}$"
 
 
 def test_param_pint():
@@ -42,66 +196,27 @@ def test_param_pint():
     assert p.nom.u == p.lb.u == p.ub.u
 
 
+@pytest.mark.parametrize(
+    "base_unit, scaled_unit",
+    [
+        pytest.param(1, 1e-3, id="unitless"),
+        pytest.param(unit.V, unit.mV, id="pint"),
+        pytest.param(u.V, u.mV, id="astropy"),
+        pytest.param(unyt.V, unyt.mV, id="unyt"),
+        pytest.param(pq.V, pq.mV, id="python-quantities"),
+    ],
+)
+def test_param_similar_units(base_unit, scaled_unit):
+    param.byrange(4 * base_unit, 1 * scaled_unit, 5 * base_unit)
+    param.bytol_abs(4 * base_unit, 1 * scaled_unit)
+
+    with pytest.raises(ValueError):
+        param.byrange(4000 * scaled_unit, 5 * base_unit, 6000 * scaled_unit)
+
+
 def test_param_outoforder():
     with pytest.raises(ValueError):
         param.byrange(0, 1, 1)
-
-
-def test_param_different_units():
-    with pytest.raises(ValueError):
-        param.byrange(1 * unit.second, 0.8 * unit.ms, 2 * unit.hour)
-
-<<<<<<< HEAD
-=======
-    with pytest.raises(ValueError):
-        param.byrange(1 * unit.second, 2, 0.5)
-
->>>>>>> 9463217 (ref: change user-reachable assertions to exceptions)
-
-def test_derive_byev():
-    A = param.byrange(5, 0, 10, tag="A")
-    B = param.bytol(2, 0.1, False, tag="B")
-    C = derive.byev(A, B, tag="C")(lambda a, b: a + b)
-    assert C.nom == 7 and C.lb == 1.9 and C.ub == 12.1
-    assert C(a=6).nom == 8 and C(a=6).lb == 7.9 and C(a=6).ub == 8.1
-    assert C(a=6, b=2.05) == 8.05
-    assert C.derivation.nom == {A: A.nom, B: B.nom}
-    assert C.derivation.lb == {A: A.lb, B: B.lb}
-    assert C.derivation.ub == {A: A.ub, B: B.ub}
-    assert str(C) == "C: 7 (nom), 1.9 (lb), 12.1 (ub)"
-    assert f"{C:L}" == "$7 \\pm 5.1$"
-
-
-def test_derive_bymc():
-    A = param.byrange(5, 0, 10)
-    B = param.bytol(2, 0.1, False)
-    C = derive.bymc(A, B, n=5000)(lambda a, b: a + b)
-    assert (
-        C.nom == 7
-        and C.lb == pytest.approx(1.9, abs=0.06)
-        and C.ub == pytest.approx(12.1, abs=0.06)
-    )
-    assert (
-        C(a=6).nom == 8
-        and C(a=6).lb == pytest.approx(7.9, abs=0.06)
-        and C(a=6).ub == pytest.approx(8.1, abs=0.06)
-    )
-    assert C(a=6, b=2.05) == 8.05
-
-
-def test_derive_byrss():
-    A = param.bytol(1, 2, False)
-    B = param.bytol(2, 5, False)
-    C = derive.byrss(A, B)(lambda a, b: a * b)
-    assert C.nom == 2 and C.ub == pytest.approx(8.40312, abs=1e-5)
-
-
-def test_derive_byrss_warnasymmetric():
-    A = param.byrange(0, 0, 5)
-    B = param.bytol(0, 1, False)
-    C = derive.byrss(A, B)(lambda a, b: a + b)
-    with pytest.warns(UserWarning):
-        C()
 
 
 def test_import_units():
