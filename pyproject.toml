@@ -7,7 +7,7 @@ license = "MIT"
 readme = "README.md"
 repository = "https://github.com/amosborne/worstcase"
 requires-python = ">=3.10"
-dependencies = ["Pint (>=0.24)", "networkx (>=3.3)", "pyDOE (>=1.0)"]
+dependencies = ["networkx (>=3.3)", "numpy (>=2.2)", "pyDOE (>=1.0)"]
 
 [tool.poetry.group.dev.dependencies]
 pre-commit = "^4.6.0"
@@ -18,6 +18,9 @@ flake8-pyproject = "^1.2.4"
 pytest = "^9.0.3"
 pytest-randomly = "^4.1.0"
 pytest-cov = "^7.1.0"
+Pint = "^0.24.4"
+# https://github.com/connorferster/forallpeople/issues/119
+forallpeople = { git = "https://github.com/eosti/forallpeople.git", branch = "equality-operator" }
 
 [tool.poetry.group.examples]
 optional = true

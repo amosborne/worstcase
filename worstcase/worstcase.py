@@ -6,30 +6,95 @@ from warnings import warn
 
 import networkx as nx
 import numpy as np
-from pint import Quantity, UnitRegistry
 from pydoe import lhs
-
-Unit = UnitRegistry()
 
 
 class AbstractParameter:
     def check(self, dimensionality):
+        """Pint-only method, left for backwards compatiblity"""
         return self.nom.check(dimensionality)
 
     @property
     def dimensionality(self):
+        """Pint-only method, left for backwards compatiblity"""
         return self.nom.dimensionality
 
     def is_compatible_with(self, other, *contexts, **ctx_kwargs):
+        """Pint-only method, left for backwards compatiblity"""
         return self.nom.is_compatible_with(other, *contexts, **ctx_kwargs)
 
     @property
     def units(self):
-        return self.nom.units
+        return self.get_units(self.nom)
 
     @property
     def u(self):
         return self.units
+
+    @staticmethod
+    def get_units(value):
+        """Return the unit of the value.
+
+        This function returns the element that can be multiplied to a
+            scalar to get a dimensioned value. This does not return the string
+            representation of the value's units.
+        """
+        # TODO: is there a better "canary" function?
+        # TODO: add tests for all supported unit systems
+        if hasattr(value, "units"):
+            # pint Quantity instance
+            # unyt instance
+            return value.units
+        if hasattr(value, "unit"):
+            # astropy Quantity instance
+            return value.unit
+        if hasattr(value, "dimensions"):
+            # forallpeople Physical instance
+            return value.split()[1]
+        if hasattr(value, "dimensionality"):
+            # python-quantities Quantity instance
+            return value.dimensionality
+        # Unknown type, return unitless
+        return 1
+
+    @staticmethod
+    def get_val(value):
+        """Return the unitless value of a dimensioned value"""
+        if hasattr(value, "value"):
+            # astropy Quantity instance
+            # forallpeople Physical instance
+            # unyt instance
+            return value.value
+        if hasattr(value, "magnitude"):
+            # pint Quantity instance
+            # python-quantities Quantity instance
+            return value.magnitude
+        # Unknown type, return self
+        return value
+
+    @staticmethod
+    def compare_units(val1, val2):
+        """Check if two values have compatible units.
+
+        Arguments:
+            val1, val2: values to compare
+
+        Returns:
+            True if the values have compatible units
+            False if the values have incompatible units
+        """
+        if hasattr(val1, "check") or hasattr(val2, "check"):
+            # Pint Quantity: addition check fails with
+            #   DimensionalityError instead of ValueError
+            if type(val1) is type(val2) and val1.check(val2):
+                return True
+            return False
+
+        try:
+            val1 + val2
+            return True
+        except ValueError:
+            return False
 
 
 Derivation = namedtuple("Derivation", "nom lb ub")
@@ -39,12 +104,26 @@ class Parameter(AbstractParameter):
     def __init__(
         self, nom, lb, ub, tag, sigfig, derivation=Derivation(nom={}, lb={}, ub={})
     ):
-        nom = nom if isinstance(nom, Quantity) else nom * Unit([])
-        lb = lb if isinstance(lb, Quantity) else lb * Unit([])
-        ub = ub if isinstance(ub, Quantity) else ub * Unit([])
+        """Create a new Parameter.
 
-        assert lb.u == nom.u == ub.u, "Parameter bounds have inconsistent units."
-        assert lb <= nom <= ub, "Parameter bounds are out of order."
+        Parameters:
+            nom: nominal value of the parameter
+            lb: lower bound of the parameter
+            ub: upper bound of the parameter
+            tag: display identifier for the parameter
+            sigfig: number of significant figures to display as a string
+            derivation: values used in derivation of this value
+
+        Raises:
+            ValueError: if the nom/lb/ub values are inconsistent
+        """
+        if not (
+            AbstractParameter.compare_units(lb, nom)
+            and AbstractParameter.compare_units(ub, nom)
+        ):
+            raise ValueError("Parameter bounds have inconsistent units.")
+        if not (lb <= nom <= ub):
+            raise ValueError("Parameter bounds are out of order.")
 
         self.nom = nom  # nominal quantity
         self.lb = lb  # lower bound quantity
@@ -57,16 +136,41 @@ class Parameter(AbstractParameter):
 
     @staticmethod
     def byrange(nom, lb, ub, tag="", sigfig=4):
+        """Define a parameter by an upper and lower bound.
+
+        Parameters:
+            nom: nominal value
+            lb: lower bound on the nominal value
+            ub: upper bound on the nominal value
+            tag: name of the parameter
+            sigfig: number of significant figures to print
+        """
         return Parameter(nom, lb, ub, tag, sigfig)
 
     @staticmethod
     def bytol(nom, tol, rel, tag="", sigfig=4):
+        """Define a parameter by a tolerance.
+
+        Parameters:
+            nom: nominal value
+            tol: tolerance to be applied to nominal value
+            rel: boolean, defines if tol is a percentage (rel=true)
+                or an absolute value (rel=false)
+            tag: name of the parameter
+            sigfig: number of significant figures to print
+        """
         tol = nom * tol if rel else tol
         return Parameter(nom, nom - tol, nom + tol, tag, sigfig)
 
     def formatter_string(self):
         """Generate the formatter string for the current data"""
-        return "0.{sigfig}G#~P".format(sigfig=self.sigfig)
+        # TODO: support other units
+        if hasattr(self.nom, "to_compact"):
+            # pint Quantity instance
+            return "0.{sigfig}G#~P".format(sigfig=self.sigfig)
+        else:
+            # Unknown type, assume it's a Scalar
+            return "0.{sigfig}g".format(sigfig=self.sigfig)
 
     def __repr__(self):
         pretty = self.formatter_string()
@@ -110,15 +214,19 @@ class Parameter(AbstractParameter):
         return self
 
     def ito(self, other=None, *contexts, **ctx_kwargs):
+        """Pint-only method, left for backwards compatiblity"""
         return self.apply("ito", other, *contexts, **ctx_kwargs)
 
     def ito_base_units(self):
+        """Pint-only method, left for backwards compatiblity"""
         return self.apply("ito_base_units")
 
     def ito_reduced_units(self):
+        """Pint-only method, left for backwards compatiblity"""
         return self.apply("ito_reduced_units")
 
     def ito_root_units(self):
+        """Pint-only method, left for backwards compatiblity"""
         return self.apply("ito_root_units")
 
     def graph(self):
@@ -378,7 +486,9 @@ def extreme_value(graph, eval_node):
     derivation_nom = {p: p.nom for p in params}
 
     # Loop through all max/min combinations for all primitives.
-    lbmin, ubmax = float("inf") * nom.u, -float("inf") * nom.u
+    lbmin, ubmax = float("inf") * AbstractParameter.get_units(nom), -float(
+        "inf"
+    ) * AbstractParameter.get_units(nom)
     for combo in product((min, max), repeat=len(params)):
         eval_init = {}
         for p, c in zip(params, combo):
@@ -426,23 +536,33 @@ def root_sum_square(graph, eval_node):
     for pvaried in params:
         eval_init = {p: graph.nodes[p]["latest"].nom for p in params - {pvaried}}
         eval_init[pvaried] = graph.nodes[pvaried]["latest"].lb
-        ret_lb = eval_graph(graph, eval_node, eval_init).m
+        ret_lb = AbstractParameter.get_val(eval_graph(graph, eval_node, eval_init))
         eval_init[pvaried] = graph.nodes[pvaried]["latest"].ub
-        ret_ub = eval_graph(graph, eval_node, eval_init).m
+        ret_ub = AbstractParameter.get_val(eval_graph(graph, eval_node, eval_init))
         ubs.append(max([ret_lb, ret_ub]))
         lbs.append(min([ret_lb, ret_ub]))
 
     # Define a metric to detect an asymmetric result and warn the user.
-    ub_deviation = np.array(ubs) - nom.m
-    lb_deviation = nom.m - np.array(lbs)
+    ub_deviation = np.array(ubs) - AbstractParameter.get_val(nom)
+    lb_deviation = AbstractParameter.get_val(nom) - np.array(lbs)
     mean_deviation = (ub_deviation + lb_deviation) / 2
     max_deviation = np.maximum(ub_deviation, lb_deviation)
     if np.any(max_deviation > mean_deviation * 1.05):
         warn("RSS method is not recommended for asymmetric derived parameters.")
 
     # Compute the RSS (root-sum-square).
-    ub = nom.m + np.sqrt(np.sum(np.square(np.array(ubs) - nom.m)))
-    lb = nom.m - np.sqrt(np.sum(np.square(np.array(lbs) - nom.m)))
+    ub = AbstractParameter.get_val(nom) + np.sqrt(
+        np.sum(np.square(np.array(ubs) - AbstractParameter.get_val(nom)))
+    )
+    lb = AbstractParameter.get_val(nom) - np.sqrt(
+        np.sum(np.square(np.array(lbs) - AbstractParameter.get_val(nom)))
+    )
 
     # todo: include derivation in the resulting parameter
-    return Parameter(nom, lb * nom.u, ub * nom.u, eval_node.tag, eval_node.sigfig)
+    return Parameter(
+        nom,
+        lb * AbstractParameter.get_units(nom),
+        ub * AbstractParameter.get_units(nom),
+        eval_node.tag,
+        eval_node.sigfig,
+    )

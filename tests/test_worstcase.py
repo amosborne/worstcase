@@ -96,3 +96,8 @@ def test_derive_byrss_warnasymmetric():
     C = derive.byrss(A, B)(lambda a, b: a + b)
     with pytest.warns(UserWarning):
         C()
+
+
+def test_import_units():
+    with pytest.raises(ImportError, match=r"^worstcase no longer*"):
+        from worstcase import unit  # noqa F401
