@@ -59,7 +59,8 @@ print([VOUT_1A, IUNC_1A])
 #  IUNC_1A: 0 A (nom), -277 mA (lb), 266 mA (ub)]
 ```
 
-Parameter units are supported via the default [Pint](https://pypi.org/project/Pint/) `UnitRegistry` object. Results can also be further analyzed for their uncertainty drivers by performing a sensitivity study (`ss()`).
+Various parameter unit libraries are supported, including [Pint](https://pypi.org/project/Pint/), [forallpeople](https://github.com/connorferster/forallpeople), [astropy](https://github.com/astropy/astropy), [unyt](https://github.com/yt-project/unyt), and [python-quantities](https://github.com/python-quantities/python-quantities).
+Results can also be further analyzed for their uncertainty drivers by performing a sensitivity study (`ss()`).
 
 ```python
 # perform sensitivity study at the 36V, 1A operating point
