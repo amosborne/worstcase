@@ -163,6 +163,39 @@ class TestUnitizedFunctions:
         assert get_val(IUNC_1A.ub) == pytest.approx(0.266, abs=1e-3)
         assert get_units(IUNC_1A.ub) == amp_unit
 
+    def test_param_equivalency(self, amp_unit, volt_unit, ohm_unit):
+        A = param.byrange(5 * amp_unit, 0 * amp_unit, 10 * amp_unit, tag="A")
+        B = param.bytol(2 * amp_unit, 0.1 * amp_unit, False, tag="B")
+        C = derive.byev(A, B, tag="C")(lambda a, b: a + b)
+        assert A.equivalent(
+            param.byrange(5 * amp_unit, 0 * amp_unit, 10 * amp_unit, tag="A")
+        )
+        assert A.equivalent(param.byrange(5 * amp_unit, 0 * amp_unit, 10 * amp_unit))
+        assert not A.equivalent(
+            param.byrange(6 * amp_unit, 0 * amp_unit, 10 * amp_unit)
+        )
+        assert not A.equivalent(
+            param.byrange(5 * amp_unit, 1 * amp_unit, 10 * amp_unit)
+        )
+        assert not A.equivalent(param.byrange(5 * amp_unit, 0 * amp_unit, 9 * amp_unit))
+        assert B.equivalent(
+            param.byrange(2 * amp_unit, 1.9 * amp_unit, 2.1 * amp_unit, tag="B")
+        )
+        assert B.equivalent(param.byrange(2 * amp_unit, 1.9 * amp_unit, 2.1 * amp_unit))
+        if amp_unit != 1:
+            assert not B.equivalent(
+                param.byrange(2 * volt_unit, 1.9 * volt_unit, 2.1 * volt_unit)
+            )
+            assert not A.equivalent(
+                param.byrange(5 * volt_unit, 0 * volt_unit, 10 * volt_unit)
+            )
+        assert C.equivalent(
+            param.byrange(7 * amp_unit, 1.9 * amp_unit, 12.1 * amp_unit, tag="C")
+        )
+        assert C.equivalent(
+            param.byrange(7 * amp_unit, 1.9 * amp_unit, 12.1 * amp_unit)
+        )
+
 
 def test_param_str_repr():
     p1 = param.bytol(2, 0.16, True, sigfig=2)

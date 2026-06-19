@@ -96,6 +96,23 @@ class AbstractParameter:
         except ValueError:
             return False
 
+    def equivalent(self, other):
+        """Check if one Parameter is equivalent to another.
+
+        Equivalancy means that nom, lb, and ub are the same,
+            while the tag, derivaiton, and sigfigs may differ.
+
+        Returns:
+            boolean; True if they are equivalent, false otherwise
+        """
+        if isinstance(other, AbstractParameter):
+            return (
+                (self.nom == other.nom)
+                and (self.lb == other.lb)
+                and (self.ub == other.ub)
+            )
+        return False
+
 
 Derivation = namedtuple("Derivation", "nom lb ub")
 
