@@ -6,7 +6,7 @@ authors = [{name="Alex Osborne", email="alex@osborneee.com"}]
 license = "MIT"
 readme = "README.md"
 urls.repository = "https://github.com/amosborne/worstcase"
-requires-python = ">=3.10"
+requires-python = ">=3.11"
 dependencies = ["networkx (>=3.3)", "numpy (>=2.2)", "pyDOE (>=1.0)"]
 
 [tool.poetry.group.dev.dependencies]
@@ -23,10 +23,9 @@ Pint = "^0.24.4"
 forallpeople = { git = "https://github.com/eosti/forallpeople.git", branch = "equality-operator" }
 unyt = "^3.1.0"
 quantities = "^0.16.4"
-astropy = "^6.0.0"
+astropy = "^7.2.0"
 pytest-rerunfailures = "^16.3"
 ipykernel = "^7.2.0"
-
 [tool.poetry.group.examples]
 optional = true
 
