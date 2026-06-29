@@ -5,20 +5,23 @@ from worstcase import derive, param, unit
 
 def test_param_byrange():
     p = param.byrange(1.23456, 1, 2, tag="test_byrange", sigfig=3)
-    assert str(p) == "test_byrange: 1.23 (nom), 1 (lb), 2 (ub)"
     assert p.nom == 1.23456 and p.lb == 1 and p.ub == 2
+    assert str(p) == "test_byrange: 1.23 (nom), 1 (lb), 2 (ub)"
+    assert f"{p:L}" == "$1.23 \\,{}^{+0.765}_{-0.235}$"
 
 
 def test_param_bytol_absolute():
     p = param.bytol(1, 0.123, False, tag="test_bytol_absolute", sigfig=2)
-    assert str(p) == "test_bytol_absolute: 1 (nom), 0.88 (lb), 1.1 (ub)"
     assert p.nom == 1 and p.lb == 0.877 and p.ub == 1.123
+    assert str(p) == "test_bytol_absolute: 1 (nom), 0.88 (lb), 1.1 (ub)"
+    assert f"{p:L}" == "$1 \\pm 0.12$"
 
 
 def test_param_bytol_relative():
     p = param.bytol(2, 0.16, True, sigfig=2)
-    assert str(p) == "2 (nom), 1.7 (lb), 2.3 (ub)"
     assert p.nom == 2 and p.lb == 1.68 and p.ub == 2.32
+    assert str(p) == "2 (nom), 1.7 (lb), 2.3 (ub)"
+    assert f"{p:L}" == "$2 \\pm 0.32$"
 
 
 def test_param_units():
@@ -59,6 +62,8 @@ def test_derive_byev():
     assert C.derivation.nom == {A: A.nom, B: B.nom}
     assert C.derivation.lb == {A: A.lb, B: B.lb}
     assert C.derivation.ub == {A: A.ub, B: B.ub}
+    assert str(C) == "C: 7 (nom), 1.9 (lb), 12.1 (ub)"
+    assert f"{C:L}" == "$7 \\pm 5.1$"
 
 
 def test_derive_bymc():
