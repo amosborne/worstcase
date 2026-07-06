@@ -153,40 +153,44 @@ class Parameter(AbstractParameter):
     def bytol(nom, tol, rel, tag="", sigfig=4):
         """Define a parameter by a tolerance.
 
-        Aliases `bytol_pct` and `bytol_abs` with boolean to pick between the two.
+        Aliases `bytol_rel` and `bytol_abs` with boolean to pick between the two.
 
         Parameters:
             nom: nominal value
             tol: tolerance to be applied to nominal value
-            rel: boolean, defines if tol is a percentage (rel=true)
+            rel: boolean, defines if tol is a relative value (rel=true)
                 or an absolute value (rel=false)
             tag: name of the parameter
             sigfig: number of significant figures to print
         """
         if rel:
-            return Parameter.bytol_pct(nom, tol, tag, sigfig)
+            return Parameter.bytol_rel(nom, tol, tag, sigfig)
         else:
             return Parameter.bytol_abs(nom, tol, tag, sigfig)
 
     @staticmethod
-    def bytol_pct(nom, pct, tag="", sigfig=4):
-        """Define a parameter by a percentage tolerance.
+    def bytol_rel(nom, rel, tag="", sigfig=4):
+        """Define a parameter by a relative tolerance.
+
+        ex. bytol_rel(5, 0.1) would result in a nom=5, lb=4.5, ub=5.5.
 
         Parameters:
             nom: nominal value
-            tol: percentage tolerance to be applied to nominal value (1 = 100%)
+            tol: relative tolerance to be applied to nominal value
             tag: name of the parameter
             sigfig: number of significant figures to print
         """
-        if AbstractParameter.get_units(pct) != 1:
-            raise ValueError("Percentage value cannot have units")
+        if AbstractParameter.get_units(rel) != 1:
+            raise ValueError("Relative value cannot have units")
 
-        tol = nom * pct
+        tol = nom * rel
         return Parameter(nom, nom - tol, nom + tol, tag, sigfig)
 
     @staticmethod
     def bytol_abs(nom, abs, tag="", sigfig=4):
         """Define a parameter by an absolute tolerance.
+
+        ex. bytol_abs(5, 0.1) would result in a nom=5, lb=4.9, ub=5.1.
 
         Parameters:
             nom: nominal value
