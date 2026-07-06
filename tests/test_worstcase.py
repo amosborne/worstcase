@@ -163,7 +163,7 @@ class TestUnitizedFunctions:
         assert get_val(IUNC_1A.ub) == pytest.approx(0.266, abs=1e-3)
         assert get_units(IUNC_1A.ub) == amp_unit
 
-    def test_param_equivalency(self, amp_unit, volt_unit, ohm_unit):
+    def test_param_equivalency(self, amp_unit, volt_unit, ohm_unit, request):
         A = param.byrange(5 * amp_unit, 0 * amp_unit, 10 * amp_unit, tag="A")
         B = param.bytol(2 * amp_unit, 0.1 * amp_unit, False, tag="B")
         C = derive.byev(A, B, tag="C")(lambda a, b: a + b)
@@ -182,18 +182,21 @@ class TestUnitizedFunctions:
             param.byrange(2 * amp_unit, 1.9 * amp_unit, 2.1 * amp_unit, tag="B")
         )
         assert B.equivalent(param.byrange(2 * amp_unit, 1.9 * amp_unit, 2.1 * amp_unit))
-        if amp_unit != 1:
-            assert not B.equivalent(
-                param.byrange(2 * volt_unit, 1.9 * volt_unit, 2.1 * volt_unit)
-            )
-            assert not A.equivalent(
-                param.byrange(5 * volt_unit, 0 * volt_unit, 10 * volt_unit)
-            )
         assert C.equivalent(
             param.byrange(7 * amp_unit, 1.9 * amp_unit, 12.1 * amp_unit, tag="C")
         )
         assert C.equivalent(
             param.byrange(7 * amp_unit, 1.9 * amp_unit, 12.1 * amp_unit)
+        )
+
+        if "unitless" in request.node.callspec.id:
+            return
+
+        assert not B.equivalent(
+            param.byrange(2 * volt_unit, 1.9 * volt_unit, 2.1 * volt_unit)
+        )
+        assert not A.equivalent(
+            param.byrange(5 * volt_unit, 0 * volt_unit, 10 * volt_unit)
         )
 
 
@@ -250,6 +253,16 @@ def test_param_similar_units(base_unit, scaled_unit):
 def test_param_outoforder():
     with pytest.raises(ValueError):
         param.byrange(0, 1, 1)
+
+
+def test_equality_different_units():
+    A = param.bytol(2 * u.A, 0.1, rel=True)
+    B = param.bytol(2 * si.A, 0.1, rel=True)
+    C = param.bytol(2, 0.1, rel=True)
+    assert not A.equivalent(B)
+    assert not B.equivalent(A)
+    assert not C.equivalent(A)
+    assert not C.equivalent(B)
 
 
 def test_import_units():

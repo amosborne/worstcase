@@ -99,19 +99,19 @@ class AbstractParameter:
     def equivalent(self, other):
         """Check if one Parameter is equivalent to another.
 
-        Equivalancy means that nom, lb, and ub are the same,
-            while the tag, derivaiton, and sigfigs may differ.
+        Equivalency means that nom, lb, and ub are the same,
+            while the tag, derivation, and sigfigs may differ.
 
         Returns:
             boolean; True if they are equivalent, false otherwise
         """
-        if isinstance(other, AbstractParameter):
-            return (
-                (self.nom == other.nom)
-                and (self.lb == other.lb)
-                and (self.ub == other.ub)
-            )
-        return False
+        if not isinstance(other, AbstractParameter):
+            return False
+        if type(self.units) is not type(other.units):
+            return False
+        return (
+            (self.nom == other.nom) and (self.lb == other.lb) and (self.ub == other.ub)
+        )
 
 
 Derivation = namedtuple("Derivation", "nom lb ub")
