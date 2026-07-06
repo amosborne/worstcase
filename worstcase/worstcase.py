@@ -10,19 +10,6 @@ from pydoe import lhs
 
 
 class AbstractParameter:
-    def check(self, dimensionality):
-        """Pint-only method, left for backwards compatiblity"""
-        return self.nom.check(dimensionality)
-
-    @property
-    def dimensionality(self):
-        """Pint-only method, left for backwards compatiblity"""
-        return self.nom.dimensionality
-
-    def is_compatible_with(self, other, *contexts, **ctx_kwargs):
-        """Pint-only method, left for backwards compatiblity"""
-        return self.nom.is_compatible_with(other, *contexts, **ctx_kwargs)
-
     @property
     def units(self):
         return self.get_units(self.nom)
@@ -262,22 +249,6 @@ class Parameter(AbstractParameter):
         getattr(self.lb, funcname)(*args, **kwargs)
         getattr(self.ub, funcname)(*args, **kwargs)
         return self
-
-    def ito(self, other=None, *contexts, **ctx_kwargs):
-        """Pint-only method, left for backwards compatiblity"""
-        return self.apply("ito", other, *contexts, **ctx_kwargs)
-
-    def ito_base_units(self):
-        """Pint-only method, left for backwards compatiblity"""
-        return self.apply("ito_base_units")
-
-    def ito_reduced_units(self):
-        """Pint-only method, left for backwards compatiblity"""
-        return self.apply("ito_reduced_units")
-
-    def ito_root_units(self):
-        """Pint-only method, left for backwards compatiblity"""
-        return self.apply("ito_root_units")
 
     def graph(self):
         graph = nx.DiGraph()

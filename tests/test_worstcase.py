@@ -220,18 +220,6 @@ def test_param_latex_repr():
     assert f"{p3:L}" == "$1.23 \\,{}^{+0.765}_{-0.235}$"
 
 
-def test_param_pint():
-    p = param.bytol(1 * unit.feet / unit.hour, 0.1, True)
-    assert p.nom.u == unit.feet / unit.hour
-    assert p.nom.u == p.lb.u == p.ub.u
-    p.ito(unit.miles / unit.second)
-    assert p.nom.u == unit.mile / unit.second
-    assert p.nom.u == p.lb.u == p.ub.u
-    p.ito_base_units()
-    assert p.nom.u == unit.meter / unit.second
-    assert p.nom.u == p.lb.u == p.ub.u
-
-
 @pytest.mark.parametrize(
     "base_unit, scaled_unit",
     [
