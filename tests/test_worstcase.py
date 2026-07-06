@@ -25,71 +25,86 @@ si.environment("default", top_level=False)
 class TestUnitizedFunctions:
     """Tests that are run across all supported unit libraries.
 
-    Note that all functions need to have all three units as argruments or
+    Note that all functions need to have all thiee unites as arguments or
         else pytest will complain. Not all tests use all units.
     """
 
     def test_param_byrange(self, amp_unit, volt_unit, ohm_unit):
         p = param.byrange(1.23456 * amp_unit, 1 * amp_unit, 2 * amp_unit, sigfig=3)
-        assert (
-            p.nom == 1.23456 * amp_unit
-            and p.lb == 1 * amp_unit
-            and p.ub == 2 * amp_unit
-        )
+        assert p.nom == 1.23456 * amp_unit
+        assert p.lb == 1 * amp_unit
+        assert p.ub == 2 * amp_unit
 
     def test_param_bytol_absolute(self, amp_unit, volt_unit, ohm_unit):
         p = param.bytol_abs(1 * volt_unit, 0.123 * volt_unit, sigfig=2)
-        assert (
-            p.nom == 1 * volt_unit
-            and p.lb == 0.877 * volt_unit
-            and p.ub == 1.123 * volt_unit
-        )
+        assert p.nom == 1 * volt_unit
+        assert p.lb == 0.877 * volt_unit
+        assert p.ub == 1.123 * volt_unit
 
-        p1 = param.bytol(1 * volt_unit, 0.123 * volt_unit, False, sigfig=2)
+        p1 = param.bytol(1 * volt_unit, 0.123 * volt_unit, rel=False, sigfig=2)
         assert str(p) == str(p1)
 
     def test_param_bytol_relative(self, amp_unit, volt_unit, ohm_unit):
-        p = param.bytol_pct(2 * ohm_unit, 0.16, sigfig=2)
-        assert (
-            p.nom == 2 * ohm_unit
-            and p.lb == 1.68 * ohm_unit
-            and p.ub == 2.32 * ohm_unit
-        )
+        p = param.bytol_rel(2 * ohm_unit, 0.16, sigfig=2)
+        assert p.nom == 2 * ohm_unit
+        assert p.lb == 1.68 * ohm_unit
+        assert p.ub == 2.32 * ohm_unit
 
         p1 = param.bytol(2 * ohm_unit, 0.16, True, sigfig=2)
         assert str(p) == str(p1)
 
-    def test_param_invalid_input(self, amp_unit, volt_unit, ohm_unit):
-        if amp_unit == 1:
-            # unitless units need not be tested
+    def test_param_bytol_relative_invalid_input(
+        self, amp_unit, volt_unit, ohm_unit, request
+    ):
+        if "unitless" in request.node.callspec.id:
             return
 
         with pytest.raises(ValueError):
-            param.byrange(1 * amp_unit, 0.8 * ohm_unit, 2 * ohm_unit)
+            param.bytol_rel(2 * ohm_unit, 0.1 * ohm_unit)
 
         with pytest.raises(ValueError):
-            param.byrange(1 * volt_unit, 2, 0.5)
+            param.bytol_rel(2 * ohm_unit, 0.1 * amp_unit)
 
         with pytest.raises(ValueError):
-            param.bytol_pct(1 * volt_unit, 2 * volt_unit)
+            param.bytol_rel(2, 0.1 * amp_unit)
+
+    def test_param_bytol_absolute_invalid_input(
+        self, amp_unit, volt_unit, ohm_unit, request
+    ):
+        if "unitless" in request.node.callspec.id:
+            return
 
         with pytest.raises(ValueError):
-            param.bytol_abs(1 * amp_unit, 2)
+            param.bytol_abs(1 * volt_unit, 0.5)
 
-        param.bytol_abs(1 * amp_unit, 2 * amp_unit)
+        with pytest.raises(ValueError):
+            param.bytol_abs(1 * volt_unit, 0.5 * amp_unit)
+
+    def test_param_byrange_invalid_input(self, amp_unit, volt_unit, ohm_unit, request):
+        if "unitless" in request.node.callspec.id:
+            return
+
+        with pytest.raises(ValueError):
+            param.byrange(1 * volt_unit, 0.5, 1.5)
+
+        with pytest.raises(ValueError):
+            param.byrange(1 * volt_unit, 0.5, 1.5 * volt_unit)
+
+        with pytest.raises(ValueError):
+            param.byrange(1 * volt_unit, 0.5 * amp_unit, 1.5 * amp_unit)
 
     def test_derive_byev(self, amp_unit, volt_unit, ohm_unit):
         A = param.byrange(5 * amp_unit, 0 * amp_unit, 10 * amp_unit, tag="A")
         B = param.bytol(2 * amp_unit, 0.1 * amp_unit, False, tag="B")
         C = derive.byev(A, B, tag="C")(lambda a, b: a + b)
-        assert (
-            C.nom == 7 * amp_unit and C.lb == 1.9 * amp_unit and C.ub == 12.1 * amp_unit
-        )
-        assert (
-            C(a=6 * amp_unit).nom == 8 * amp_unit
-            and C(a=6 * amp_unit).lb == 7.9 * amp_unit
-            and C(a=6 * amp_unit).ub == 8.1 * amp_unit
-        )
+        assert C.nom == 7 * amp_unit
+        assert C.lb == 1.9 * amp_unit
+        assert C.ub == 12.1 * amp_unit
+
+        assert C(a=6 * amp_unit).nom == 8 * amp_unit
+        assert C(a=6 * amp_unit).lb == 7.9 * amp_unit
+        assert C(a=6 * amp_unit).ub == 8.1 * amp_unit
+
         assert C(a=6 * amp_unit, b=2.05 * amp_unit) == 8.05 * amp_unit
         assert C.derivation.nom == {A: A.nom, B: B.nom}
         assert C.derivation.lb == {A: A.lb, B: B.lb}
@@ -253,6 +268,14 @@ def test_equality_different_units():
     assert not C.equivalent(B)
 
 
+def test_derive_byrss_warnasymmetric():
+    A = param.byrange(0, 0, 5)
+    B = param.bytol(0, 1, False)
+    C = derive.byrss(A, B)(lambda a, b: a + b)
+    with pytest.warns(UserWarning):
+        C()
+
+
 def test_import_units():
-    with pytest.raises(ImportError, match=r"^worstcase no longer*"):
+    with pytest.raises(ImportError, match=r"^worstcase no longer"):
         from worstcase import unit  # noqa F401
