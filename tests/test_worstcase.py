@@ -25,7 +25,7 @@ si.environment("default", top_level=False)
 class TestUnitizedFunctions:
     """Tests that are run across all supported unit libraries.
 
-    Note that all functions need to have all thiee unites as arguments or
+    Note that all functions need to have all three units as arguments or
         else pytest will complain. Not all tests use all units.
     """
 
@@ -215,6 +215,69 @@ class TestUnitizedFunctions:
         )
 
 
+@pytest.mark.parametrize(
+    "base_unit, scaled_unit",
+    [
+        pytest.param(1, 1e-3, id="unitless"),
+        pytest.param(unit.V, unit.mV, id="pint"),
+        pytest.param(u.V, u.mV, id="astropy"),
+        pytest.param(unyt.V, unyt.mV, id="unyt"),
+        pytest.param(pq.V, pq.mV, id="python-quantities"),
+    ],
+)
+class TestScaledUnitizedFunctions:
+    """Tests functions when inputs may be differently scaled values.
+
+    Ex. 5V + 50mV should equal 5.05V, but could be erroneously summed to 55V.
+    """
+
+    def test_scaled_units_param(self, base_unit, scaled_unit):
+        A = param.byrange(4 * base_unit, 1 * scaled_unit, 5 * base_unit)
+        assert A.units == param.get_units(A.lb)
+        assert A.units == param.get_units(A.ub)
+
+        B = param.bytol_abs(4 * base_unit, 1 * scaled_unit)
+        assert B.units == param.get_units(B.lb)
+        assert B.units == param.get_units(B.ub)
+
+        with pytest.raises(ValueError):
+            param.byrange(4000 * scaled_unit, 5 * base_unit, 6000 * scaled_unit)
+
+    def test_scaled_units_ev(self, base_unit, scaled_unit):
+        A = param.byrange(4 * base_unit, 3900 * scaled_unit, 4.1 * base_unit)
+        B = param.bytol(2 * base_unit, 100 * scaled_unit, False)
+        C = derive.byev(A, B)(lambda a, b: a + b)
+
+        assert C.nom == 6 * base_unit
+        assert C.get_val(C.lb) == pytest.approx(5.8, abs=1e-5)
+        assert C.get_val(C.ub) == pytest.approx(6.2, abs=1e-5)
+        assert C.get_units(C.lb) == base_unit
+        assert C.get_units(C.ub) == base_unit
+
+    def test_scaled_units_mc(self, base_unit, scaled_unit):
+        A = param.byrange(4 * base_unit, 3900 * scaled_unit, 4.1 * base_unit)
+        B = param.bytol(2 * base_unit, 100 * scaled_unit, False)
+        C = derive.bymc(A, B, n=1000)(lambda a, b: a + b)
+
+        assert C.nom == 6 * base_unit
+        # Looking for order-of-magnitude issues, not precision
+        assert C.get_val(C.lb) == pytest.approx(5.8, abs=1e-1)
+        assert C.get_val(C.ub) == pytest.approx(6.2, abs=1e-1)
+        assert C.get_units(C.lb) == base_unit
+        assert C.get_units(C.ub) == base_unit
+
+    def test_scaled_units_rss(self, base_unit, scaled_unit):
+        A = param.byrange(4 * base_unit, 3900 * scaled_unit, 4.1 * base_unit)
+        B = param.bytol(2 * base_unit, 100 * scaled_unit, False)
+        C = derive.byrss(A, B)(lambda a, b: a + b)
+
+        assert C.nom == 6 * base_unit
+        assert C.get_val(C.lb) == pytest.approx(5.8, abs=1e-1)
+        assert C.get_val(C.ub) == pytest.approx(6.2, abs=1e-1)
+        assert C.get_units(C.lb) == base_unit
+        assert C.get_units(C.ub) == base_unit
+
+
 def test_param_str_repr():
     p1 = param.bytol(2, 0.16, True, sigfig=2)
     p2 = param.bytol(1, 0.123, False, tag="absolute", sigfig=2)
@@ -233,24 +296,6 @@ def test_param_latex_repr():
     assert f"{p1:L}" == "$2 \\pm 0.32$"
     assert f"{p2:L}" == "$1 \\pm 0.12$"
     assert f"{p3:L}" == "$1.23 \\,{}^{+0.765}_{-0.235}$"
-
-
-@pytest.mark.parametrize(
-    "base_unit, scaled_unit",
-    [
-        pytest.param(1, 1e-3, id="unitless"),
-        pytest.param(unit.V, unit.mV, id="pint"),
-        pytest.param(u.V, u.mV, id="astropy"),
-        pytest.param(unyt.V, unyt.mV, id="unyt"),
-        pytest.param(pq.V, pq.mV, id="python-quantities"),
-    ],
-)
-def test_param_similar_units(base_unit, scaled_unit):
-    param.byrange(4 * base_unit, 1 * scaled_unit, 5 * base_unit)
-    param.bytol_abs(4 * base_unit, 1 * scaled_unit)
-
-    with pytest.raises(ValueError):
-        param.byrange(4000 * scaled_unit, 5 * base_unit, 6000 * scaled_unit)
 
 
 def test_param_outoforder():
