@@ -35,6 +35,19 @@ class TestUnitizedFunctions:
         assert p.lb == 1 * amp_unit
         assert p.ub == 2 * amp_unit
 
+    def test_param_byrange_invalid_input(self, amp_unit, volt_unit, ohm_unit, request):
+        if "unitless" in request.node.callspec.id:
+            return
+
+        with pytest.raises(ValueError):
+            param.byrange(1 * volt_unit, 0.5, 1.5)
+
+        with pytest.raises(ValueError):
+            param.byrange(1 * volt_unit, 0.5, 1.5 * volt_unit)
+
+        with pytest.raises(ValueError):
+            param.byrange(1 * volt_unit, 0.5 * amp_unit, 1.5 * amp_unit)
+
     def test_param_bytol_absolute(self, amp_unit, volt_unit, ohm_unit):
         p = param.bytol_abs(1 * volt_unit, 0.123 * volt_unit, sigfig=2)
         assert p.nom == 1 * volt_unit
@@ -43,6 +56,18 @@ class TestUnitizedFunctions:
 
         p1 = param.bytol(1 * volt_unit, 0.123 * volt_unit, rel=False, sigfig=2)
         assert str(p) == str(p1)
+
+    def test_param_bytol_absolute_invalid_input(
+        self, amp_unit, volt_unit, ohm_unit, request
+    ):
+        if "unitless" in request.node.callspec.id:
+            return
+
+        with pytest.raises(ValueError):
+            param.bytol_abs(1 * volt_unit, 0.5)
+
+        with pytest.raises(ValueError):
+            param.bytol_abs(1 * volt_unit, 0.5 * amp_unit)
 
     def test_param_bytol_relative(self, amp_unit, volt_unit, ohm_unit):
         p = param.bytol_rel(2 * ohm_unit, 0.16, sigfig=2)
@@ -68,30 +93,8 @@ class TestUnitizedFunctions:
         with pytest.raises(ValueError):
             param.bytol_rel(2, 0.1 * amp_unit)
 
-    def test_param_bytol_absolute_invalid_input(
-        self, amp_unit, volt_unit, ohm_unit, request
-    ):
-        if "unitless" in request.node.callspec.id:
-            return
-
-        with pytest.raises(ValueError):
-            param.bytol_abs(1 * volt_unit, 0.5)
-
-        with pytest.raises(ValueError):
-            param.bytol_abs(1 * volt_unit, 0.5 * amp_unit)
-
-    def test_param_byrange_invalid_input(self, amp_unit, volt_unit, ohm_unit, request):
-        if "unitless" in request.node.callspec.id:
-            return
-
-        with pytest.raises(ValueError):
-            param.byrange(1 * volt_unit, 0.5, 1.5)
-
-        with pytest.raises(ValueError):
-            param.byrange(1 * volt_unit, 0.5, 1.5 * volt_unit)
-
-        with pytest.raises(ValueError):
-            param.byrange(1 * volt_unit, 0.5 * amp_unit, 1.5 * amp_unit)
+    def test_param_bytol_relative_dimensionless(self, amp_unit, volt_unit, ohm_unit):
+        param.bytol_rel(2 * volt_unit, 0.1 * amp_unit / amp_unit)
 
     def test_derive_byev(self, amp_unit, volt_unit, ohm_unit):
         A = param.byrange(5 * amp_unit, 0 * amp_unit, 10 * amp_unit, tag="A")

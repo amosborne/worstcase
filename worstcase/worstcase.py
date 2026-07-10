@@ -8,56 +8,29 @@ import networkx as nx
 import numpy as np
 from pydoe import lhs
 
+from worstcase.unit_adapter import unit_adapter
+
 
 class AbstractParameter:
     @property
     def units(self):
-        return self.get_units(self.nom)
+        """Return the unit of the Parameter"""
+        return unit_adapter(type(self.nom)).units(self.nom)
 
     @property
     def u(self):
+        """Return the unit of the Parameter"""
         return self.units
 
     @staticmethod
     def get_units(value):
-        """Return the unit of the value.
-
-        This function returns the element that can be multiplied to a
-            scalar to get a dimensioned value. This does not return the string
-            representation of the value's units.
-        """
-        # TODO: is there a better "canary" function?
-        # TODO: add tests for all supported unit systems
-        if hasattr(value, "units"):
-            # pint Quantity instance
-            # unyt instance
-            return value.units
-        if hasattr(value, "unit"):
-            # astropy Quantity instance
-            return value.unit
-        if hasattr(value, "dimensions"):
-            # forallpeople Physical instance
-            return value.split()[1]
-        if hasattr(value, "dimensionality"):
-            # python-quantities Quantity instance
-            return value.dimensionality
-        # Unknown type, return unitless
-        return 1
+        """Return the unit of a value."""
+        return unit_adapter(type(value)).units(value)
 
     @staticmethod
     def get_val(value):
         """Return the unitless value of a dimensioned value"""
-        if hasattr(value, "value"):
-            # astropy Quantity instance
-            # forallpeople Physical instance
-            # unyt instance
-            return value.value
-        if hasattr(value, "magnitude"):
-            # pint Quantity instance
-            # python-quantities Quantity instance
-            return value.magnitude
-        # Unknown type, return self
-        return value
+        return unit_adapter(type(value)).magnitude(value)
 
     @staticmethod
     def compare_units(val1, val2):
@@ -70,18 +43,17 @@ class AbstractParameter:
             True if the values have compatible units
             False if the values have incompatible units
         """
-        if hasattr(val1, "check") or hasattr(val2, "check"):
-            # Pint Quantity: addition check fails with
-            #   DimensionalityError instead of ValueError
-            if type(val1) is type(val2) and val1.check(val2):
-                return True
-            return False
+        return unit_adapter(type(val1)).compatible(val1, val2)
 
-        try:
-            val1 + val2
-            return True
-        except ValueError:
-            return False
+    @staticmethod
+    def convert_units(val1, val2):
+        """Convert val1 to the units of val2"""
+        return unit_adapter(type(val1)).convert(val1, val2)
+
+    @staticmethod
+    def is_dimensionless(val):
+        """Check if a value is dimensionless"""
+        return unit_adapter(type(val)).is_dimensionless(val)
 
     def equivalent(self, other):
         """Check if one Parameter is equivalent to another.
@@ -147,6 +119,13 @@ class Parameter(AbstractParameter):
             tag: name of the parameter
             sigfig: number of significant figures to print
         """
+        if not (
+            AbstractParameter.compare_units(nom, lb)
+            and AbstractParameter.compare_units(nom, ub)
+        ):
+            raise ValueError("Nominal value and bounds must have compatible units")
+        lb = AbstractParameter.convert_units(lb, nom)
+        ub = AbstractParameter.convert_units(ub, nom)
         return Parameter(nom, lb, ub, tag, sigfig)
 
     @staticmethod
@@ -169,49 +148,44 @@ class Parameter(AbstractParameter):
             return Parameter.bytol_abs(nom, tol, tag, sigfig)
 
     @staticmethod
-    def bytol_rel(nom, rel, tag="", sigfig=4):
+    def bytol_rel(nom, rel_tol, tag="", sigfig=4):
         """Define a parameter by a relative tolerance.
 
         ex. bytol_rel(5, 0.1) would result in a nom=5, lb=4.5, ub=5.5.
 
         Parameters:
             nom: nominal value
-            tol: relative tolerance to be applied to nominal value
+            rel_tol: relative tolerance to be applied to nominal value
             tag: name of the parameter
             sigfig: number of significant figures to print
         """
-        if AbstractParameter.get_units(rel) != 1:
+        if not AbstractParameter.is_dimensionless(rel_tol):
             raise ValueError("Relative value cannot have units")
 
-        tol = nom * rel
+        tol = nom * rel_tol
         return Parameter(nom, nom - tol, nom + tol, tag, sigfig)
 
     @staticmethod
-    def bytol_abs(nom, abs, tag="", sigfig=4):
+    def bytol_abs(nom, abs_tol, tag="", sigfig=4):
         """Define a parameter by an absolute tolerance.
 
         ex. bytol_abs(5, 0.1) would result in a nom=5, lb=4.9, ub=5.1.
 
         Parameters:
             nom: nominal value
-            abs: absolute tolerance to be applied to nominal value
+            abs_tol: absolute tolerance to be applied to nominal value
             tag: name of the parameter
             sigfig: number of significant figures to print
         """
 
-        if not AbstractParameter.compare_units(nom, abs):
+        if not AbstractParameter.compare_units(nom, abs_tol):
             raise ValueError("Nominal and absolute values must have compatible units")
-        return Parameter(nom, nom - abs, nom + abs, tag, sigfig)
+        abs_tol = AbstractParameter.convert_units(abs_tol, nom)
+        return Parameter(nom, nom - abs_tol, nom + abs_tol, tag, sigfig)
 
     def formatter_string(self):
         """Generate the formatter string for the current data"""
-        # TODO: support other units
-        if hasattr(self.nom, "to_compact"):
-            # pint Quantity instance
-            return "0.{sigfig}G#~P".format(sigfig=self.sigfig)
-        else:
-            # Unknown type, assume it's a Scalar
-            return "0.{sigfig}g".format(sigfig=self.sigfig)
+        return unit_adapter(type(self.nom)).format_str(self.sigfig)
 
     def __repr__(self):
         pretty = self.formatter_string()
