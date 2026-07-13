@@ -17,6 +17,10 @@ At its core, the `worstcase` Python package computes three values: the nominal, 
 Input parameters are defined by their range or tolerance, (`param.byrange`, `param.bytol`).
 
 ```python
+from worstcase import param, derive
+from pint import UnitRegistry
+unit = UnitRegistry()
+
 # define the resistor uncertainties
 R1 = param.bytol(nom=100 * unit.mohm, tol=0.01, rel=True, tag="R1")
 R2 = param.bytol(nom=1.001 * unit.kohm, tol=0.01, rel=True, tag="R2")
