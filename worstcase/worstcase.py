@@ -486,9 +486,8 @@ def extreme_value(graph, eval_node):
     derivation_nom = {p: p.nom for p in params}
 
     # Loop through all max/min combinations for all primitives.
-    lbmin, ubmax = float("inf") * AbstractParameter.get_units(nom), -float(
-        "inf"
-    ) * AbstractParameter.get_units(nom)
+    nom_units = AbstractParameter.get_units(nom)
+    lbmin, ubmax = float("inf") * nom_units, -float("inf") * nom_units
     for combo in product((min, max), repeat=len(params)):
         eval_init = {}
         for p, c in zip(params, combo):
@@ -543,26 +542,24 @@ def root_sum_square(graph, eval_node):
         lbs.append(min([ret_lb, ret_ub]))
 
     # Define a metric to detect an asymmetric result and warn the user.
-    ub_deviation = np.array(ubs) - AbstractParameter.get_val(nom)
-    lb_deviation = AbstractParameter.get_val(nom) - np.array(lbs)
+    nom_val = AbstractParameter.get_val(nom)
+    nom_units = AbstractParameter.get_units(nom)
+    ub_deviation = np.array(ubs) - nom_val
+    lb_deviation = nom_val - np.array(lbs)
     mean_deviation = (ub_deviation + lb_deviation) / 2
     max_deviation = np.maximum(ub_deviation, lb_deviation)
     if np.any(max_deviation > mean_deviation * 1.05):
         warn("RSS method is not recommended for asymmetric derived parameters.")
 
     # Compute the RSS (root-sum-square).
-    ub = AbstractParameter.get_val(nom) + np.sqrt(
-        np.sum(np.square(np.array(ubs) - AbstractParameter.get_val(nom)))
-    )
-    lb = AbstractParameter.get_val(nom) - np.sqrt(
-        np.sum(np.square(np.array(lbs) - AbstractParameter.get_val(nom)))
-    )
+    ub = nom_val + np.sqrt(np.sum(np.square(np.array(ubs) - nom_val)))
+    lb = nom_val - np.sqrt(np.sum(np.square(np.array(lbs) - nom_val)))
 
     # todo: include derivation in the resulting parameter
     return Parameter(
         nom,
-        lb * AbstractParameter.get_units(nom),
-        ub * AbstractParameter.get_units(nom),
+        lb * nom_units,
+        ub * nom_units,
         eval_node.tag,
         eval_node.sigfig,
     )
