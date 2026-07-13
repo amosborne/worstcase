@@ -6,30 +6,71 @@ from warnings import warn
 
 import networkx as nx
 import numpy as np
-from pint import Quantity, UnitRegistry
 from pydoe import lhs
 
-Unit = UnitRegistry()
+from worstcase.unit_adapter import unit_adapter
 
 
 class AbstractParameter:
-    def check(self, dimensionality):
-        return self.nom.check(dimensionality)
-
-    @property
-    def dimensionality(self):
-        return self.nom.dimensionality
-
-    def is_compatible_with(self, other, *contexts, **ctx_kwargs):
-        return self.nom.is_compatible_with(other, *contexts, **ctx_kwargs)
-
     @property
     def units(self):
-        return self.nom.units
+        """Return the unit of the Parameter"""
+        return unit_adapter(type(self.nom)).units(self.nom)
 
     @property
     def u(self):
+        """Return the unit of the Parameter"""
         return self.units
+
+    @staticmethod
+    def get_units(value):
+        """Return the unit of a value."""
+        return unit_adapter(type(value)).units(value)
+
+    @staticmethod
+    def get_val(value):
+        """Return the unitless value of a dimensioned value"""
+        return unit_adapter(type(value)).magnitude(value)
+
+    @staticmethod
+    def compare_units(val1, val2):
+        """Check if two values have compatible units.
+
+        Arguments:
+            val1, val2: values to compare
+
+        Returns:
+            True if the values have compatible units
+            False if the values have incompatible units
+        """
+        return unit_adapter(type(val1)).compatible(val1, val2)
+
+    @staticmethod
+    def convert_units(val1, val2):
+        """Convert val1 to the units of val2"""
+        return unit_adapter(type(val1)).convert(val1, val2)
+
+    @staticmethod
+    def is_dimensionless(val):
+        """Check if a value is dimensionless"""
+        return unit_adapter(type(val)).is_dimensionless(val)
+
+    def equivalent(self, other):
+        """Check if one Parameter is equivalent to another.
+
+        Equivalency means that nom, lb, and ub are the same,
+            while the tag, derivation, and sigfigs may differ.
+
+        Returns:
+            boolean; True if they are equivalent, false otherwise
+        """
+        if not isinstance(other, AbstractParameter):
+            return False
+        if type(self.units) is not type(other.units):
+            return False
+        return (
+            (self.nom == other.nom) and (self.lb == other.lb) and (self.ub == other.ub)
+        )
 
 
 Derivation = namedtuple("Derivation", "nom lb ub")
@@ -39,34 +80,112 @@ class Parameter(AbstractParameter):
     def __init__(
         self, nom, lb, ub, tag, sigfig, derivation=Derivation(nom={}, lb={}, ub={})
     ):
-        nom = nom if isinstance(nom, Quantity) else nom * Unit([])
-        lb = lb if isinstance(lb, Quantity) else lb * Unit([])
-        ub = ub if isinstance(ub, Quantity) else ub * Unit([])
+        """Create a new Parameter.
 
-        assert lb.u == nom.u == ub.u, "Parameter bounds have inconsistent units."
-        assert lb <= nom <= ub, "Parameter bounds are out of order."
+        Parameters:
+            nom: nominal value of the parameter
+            lb: lower bound of the parameter
+            ub: upper bound of the parameter
+            tag: display identifier for the parameter
+            sigfig: number of significant figures to display as a string
+            derivation: values used in derivation of this value
 
-        self.nom = nom  # nominal quantity
-        self.lb = lb  # lower bound quantity
-        self.ub = ub  # upper bound quantity
-        self.tag = tag  # string identifier
-        self.sigfig = sigfig  # string significant digits
-        self.derivation = (
-            derivation  # namedtuple, each field is a {parameter: quantity}
-        )
+        Raises:
+            ValueError: if the nom/lb/ub values are inconsistent
+        """
+        if not (
+            AbstractParameter.compare_units(lb, nom)
+            and AbstractParameter.compare_units(ub, nom)
+        ):
+            raise ValueError("Parameter bounds have inconsistent units.")
+        if not (lb <= nom <= ub):
+            raise ValueError("Parameter bounds are out of order.")
+
+        self.nom = nom
+        self.lb = lb
+        self.ub = ub
+        self.tag = tag
+        self.sigfig = sigfig
+        self.derivation = derivation
 
     @staticmethod
     def byrange(nom, lb, ub, tag="", sigfig=4):
+        """Define a parameter by an upper and lower bound.
+
+        Parameters:
+            nom: nominal value
+            lb: lower bound on the nominal value
+            ub: upper bound on the nominal value
+            tag: name of the parameter
+            sigfig: number of significant figures to print
+        """
+        if not (
+            AbstractParameter.compare_units(nom, lb)
+            and AbstractParameter.compare_units(nom, ub)
+        ):
+            raise ValueError("Nominal value and bounds must have compatible units")
+        lb = AbstractParameter.convert_units(lb, nom)
+        ub = AbstractParameter.convert_units(ub, nom)
         return Parameter(nom, lb, ub, tag, sigfig)
 
     @staticmethod
     def bytol(nom, tol, rel, tag="", sigfig=4):
-        tol = nom * tol if rel else tol
+        """Define a parameter by a tolerance.
+
+        Aliases `bytol_rel` and `bytol_abs` with boolean to pick between the two.
+
+        Parameters:
+            nom: nominal value
+            tol: tolerance to be applied to nominal value
+            rel: boolean, defines if tol is a relative value (rel=true)
+                or an absolute value (rel=false)
+            tag: name of the parameter
+            sigfig: number of significant figures to print
+        """
+        if rel:
+            return Parameter.bytol_rel(nom, tol, tag, sigfig)
+        else:
+            return Parameter.bytol_abs(nom, tol, tag, sigfig)
+
+    @staticmethod
+    def bytol_rel(nom, rel_tol, tag="", sigfig=4):
+        """Define a parameter by a relative tolerance.
+
+        ex. bytol_rel(5, 0.1) would result in a nom=5, lb=4.5, ub=5.5.
+
+        Parameters:
+            nom: nominal value
+            rel_tol: relative tolerance to be applied to nominal value
+            tag: name of the parameter
+            sigfig: number of significant figures to print
+        """
+        if not AbstractParameter.is_dimensionless(rel_tol):
+            raise ValueError("Relative value cannot have units")
+
+        tol = nom * rel_tol
         return Parameter(nom, nom - tol, nom + tol, tag, sigfig)
+
+    @staticmethod
+    def bytol_abs(nom, abs_tol, tag="", sigfig=4):
+        """Define a parameter by an absolute tolerance.
+
+        ex. bytol_abs(5, 0.1) would result in a nom=5, lb=4.9, ub=5.1.
+
+        Parameters:
+            nom: nominal value
+            abs_tol: absolute tolerance to be applied to nominal value
+            tag: name of the parameter
+            sigfig: number of significant figures to print
+        """
+
+        if not AbstractParameter.compare_units(nom, abs_tol):
+            raise ValueError("Nominal and absolute values must have compatible units")
+        abs_tol = AbstractParameter.convert_units(abs_tol, nom)
+        return Parameter(nom, nom - abs_tol, nom + abs_tol, tag, sigfig)
 
     def formatter_string(self):
         """Generate the formatter string for the current data"""
-        return "0.{sigfig}G#~P".format(sigfig=self.sigfig)
+        return unit_adapter(type(self.nom)).format_str(self.sigfig)
 
     def __repr__(self):
         pretty = self.formatter_string()
@@ -108,18 +227,6 @@ class Parameter(AbstractParameter):
         getattr(self.lb, funcname)(*args, **kwargs)
         getattr(self.ub, funcname)(*args, **kwargs)
         return self
-
-    def ito(self, other=None, *contexts, **ctx_kwargs):
-        return self.apply("ito", other, *contexts, **ctx_kwargs)
-
-    def ito_base_units(self):
-        return self.apply("ito_base_units")
-
-    def ito_reduced_units(self):
-        return self.apply("ito_reduced_units")
-
-    def ito_root_units(self):
-        return self.apply("ito_root_units")
 
     def graph(self):
         graph = nx.DiGraph()
@@ -274,7 +381,8 @@ class Derivative(AbstractParameter):
         # all AbstractParameters needed to derive this Derivative.
         graph = self.graph(ss)
         cycles = list(nx.simple_cycles(graph))
-        assert not cycles, "Derivative cannot have cyclical dependencies."
+        if cycles:
+            raise RecursionError("Derivative cannot have cyclical dependencies.")
 
         # Traverse the graph (in any order). For each node, get the set
         # of ancestor nodes. If no ancestor node contains an out-edge
@@ -378,7 +486,8 @@ def extreme_value(graph, eval_node):
     derivation_nom = {p: p.nom for p in params}
 
     # Loop through all max/min combinations for all primitives.
-    lbmin, ubmax = float("inf") * nom.u, -float("inf") * nom.u
+    nom_units = AbstractParameter.get_units(nom)
+    lbmin, ubmax = float("inf") * nom_units, -float("inf") * nom_units
     for combo in product((min, max), repeat=len(params)):
         eval_init = {}
         for p, c in zip(params, combo):
@@ -426,23 +535,31 @@ def root_sum_square(graph, eval_node):
     for pvaried in params:
         eval_init = {p: graph.nodes[p]["latest"].nom for p in params - {pvaried}}
         eval_init[pvaried] = graph.nodes[pvaried]["latest"].lb
-        ret_lb = eval_graph(graph, eval_node, eval_init).m
+        ret_lb = AbstractParameter.get_val(eval_graph(graph, eval_node, eval_init))
         eval_init[pvaried] = graph.nodes[pvaried]["latest"].ub
-        ret_ub = eval_graph(graph, eval_node, eval_init).m
+        ret_ub = AbstractParameter.get_val(eval_graph(graph, eval_node, eval_init))
         ubs.append(max([ret_lb, ret_ub]))
         lbs.append(min([ret_lb, ret_ub]))
 
     # Define a metric to detect an asymmetric result and warn the user.
-    ub_deviation = np.array(ubs) - nom.m
-    lb_deviation = nom.m - np.array(lbs)
+    nom_val = AbstractParameter.get_val(nom)
+    nom_units = AbstractParameter.get_units(nom)
+    ub_deviation = np.array(ubs) - nom_val
+    lb_deviation = nom_val - np.array(lbs)
     mean_deviation = (ub_deviation + lb_deviation) / 2
     max_deviation = np.maximum(ub_deviation, lb_deviation)
     if np.any(max_deviation > mean_deviation * 1.05):
         warn("RSS method is not recommended for asymmetric derived parameters.")
 
     # Compute the RSS (root-sum-square).
-    ub = nom.m + np.sqrt(np.sum(np.square(np.array(ubs) - nom.m)))
-    lb = nom.m - np.sqrt(np.sum(np.square(np.array(lbs) - nom.m)))
+    ub = nom_val + np.sqrt(np.sum(np.square(np.array(ubs) - nom_val)))
+    lb = nom_val - np.sqrt(np.sum(np.square(np.array(lbs) - nom_val)))
 
     # todo: include derivation in the resulting parameter
-    return Parameter(nom, lb * nom.u, ub * nom.u, eval_node.tag, eval_node.sigfig)
+    return Parameter(
+        nom,
+        lb * nom_units,
+        ub * nom_units,
+        eval_node.tag,
+        eval_node.sigfig,
+    )
