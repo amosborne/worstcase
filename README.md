@@ -35,7 +35,7 @@ pip install worstcase
 ```
 
 Upgrading from 0.x? See the
-[migration guide](https://github.com/amosborne/worstcase/blob/release/1.0/MIGRATION.md).
+[migration notes below](#upgrading-from-0x).
 
 Plain numbers need no unit package. For the Pint examples below, also install:
 
@@ -419,10 +419,28 @@ still matter, regardless of the method chosen.
 
 For a larger worked circuit, see the
 [current-sensing notebook](https://github.com/amosborne/worstcase/blob/release/1.0/example.ipynb).
-For API changes, see the
-[migration guide](https://github.com/amosborne/worstcase/blob/release/1.0/MIGRATION.md).
 Report problems or request features through
 [GitHub issues](https://github.com/amosborne/worstcase/issues).
+
+## Upgrading from 0.x
+
+1.0 is a breaking release. Choose an analysis method when evaluating the final
+formula, and keep intermediate formulas to preserve shared input dependencies.
+
+| Before | Now |
+|---|---|
+| `from worstcase import unit` | Create units with your preferred library, such as Pint's `UnitRegistry()` |
+| `param.bytol(nom, tol, rel=True)` | `param.bytol_rel(nom, tol)` |
+| `param.bytol(nom, tol, rel=False)` | `param.bytol_abs(nom, tol)` |
+| `@derive.byev(...)` | Ordinary formula arithmetic, or `@derive` with explicit input arguments |
+| `@derive.bymc(...)` / `@derive.byrss(...)` | `formula.derive(method="mc", n=1000, seed=42)` / `formula.derive(method="rss")` |
+| `C()` / `C.lb` | `result = formula.derive(); result.lb` |
+| `sigfig=3` | `format(result, ".3g")` |
+| `C(tag="study").ss(A)` | `formula.ss(A, tag="study")` |
+| Pint-specific `ito` / `apply` methods | Convert concrete quantities in your code or inside a wrapped function |
+
+Result bound assignments are keyed by the original input objects; RSS has no
+joint lower/upper assignment. MC records the sampled extrema, including nominal.
 
 ## Contributing
 
@@ -431,8 +449,6 @@ Development uses Poetry 2.5.1 and the committed lockfile. From a checkout:
 ```sh
 poetry sync --with examples
 poetry run python -m pytest
+poetry run python scripts/check_notebook.py
 poetry build
 ```
-
-Release procedure and maintainer checks live in the
-[release checklist](https://github.com/amosborne/worstcase/blob/release/1.0/RELEASE.md).

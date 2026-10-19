@@ -20,6 +20,6 @@ repos:
       name: pytest
       entry: poetry run python -m pytest
       language: system
-      files: ^(worstcase/|tests/|examples/|README\.md|example\.ipynb|pyproject\.toml|poetry\.lock)
+      files: ^(worstcase/|tests/|README\.md|example\.ipynb|pyproject\.toml|poetry\.lock)
       types: [file]
       pass_filenames: false

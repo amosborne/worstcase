@@ -35,9 +35,9 @@ jobs:
       - run: python -m pip install poetry==2.5.1
       - run: poetry sync --with examples
       - run: poetry check --lock
-      - run: poetry run black --check worstcase tests examples scripts
-      - run: poetry run isort --check-only worstcase tests examples scripts
-      - run: poetry run flake8 worstcase tests examples scripts
+      - run: poetry run black --check worstcase tests scripts
+      - run: poetry run isort --check-only worstcase tests scripts
+      - run: poetry run flake8 worstcase tests scripts
       - run: poetry run python scripts/audit_dependencies.py
       - run: poetry build
       - run: poetry run python scripts/check_artifacts.py

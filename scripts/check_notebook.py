@@ -36,7 +36,8 @@ with tempfile.TemporaryDirectory(prefix="kernel-", dir=root / "build") as direct
         notebook,
         timeout=180,
         kernel_name="python3",
-        resources={"metadata": {"path": str(root)}},
+        # A downloaded notebook must work without companion repository files.
+        resources={"metadata": {"path": directory}},
     )
     client.create_kernel_manager()
     client.km.kernel_spec_manager = KernelSpecManager(kernel_dirs=[directory])
