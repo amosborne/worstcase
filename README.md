@@ -40,7 +40,7 @@ Upgrading from 0.x? See the
 Plain numbers need no unit package. For the Pint examples below, also install:
 
 ```sh
-python -m pip install pint
+pip install pint
 ```
 
 Pint, forallpeople, Astropy, unyt, and python-quantities are supported. Install the
@@ -159,7 +159,7 @@ quantity comes first, use `param.constant(5 * u.V) * r1` for portable behavior;
 some libraries reject `quantity * uncertain_input` before worstcase can handle it.
 
 Other supported libraries work with the same `param` API. For example, with
-Astropy installed (`python -m pip install astropy`):
+Astropy installed (`pip install astropy`):
 
 ```python
 from astropy import units as au

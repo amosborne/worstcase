@@ -1,6 +1,6 @@
 [project]
 name = "worstcase"
-version = "1.0.0rc1"
+version = "1.0.0"
 description = "Unit-aware scalar expressions for corner, Monte Carlo, and RSS analysis."
 authors = [{name = "Alex Osborne", email = "alex@osborneee.com"}]
 license = "MIT"
