@@ -1,7 +1,8 @@
-from .worstcase import Derivative as derive
+from .worstcase import Expression
 from .worstcase import Parameter as param
+from .worstcase import Result, derive
 
-__all__ = ["param", "derive"]
+__all__ = ["param", "derive", "Expression", "Result"]
 
 
 def __getattr__(name):

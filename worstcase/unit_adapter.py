@@ -1,172 +1,189 @@
+"""Optional quantity integration. Numerical methods operate on quantities directly."""
+
 import functools
+import math
 import numbers
+from copy import copy
 from operator import attrgetter
+
+import numpy as np
 
 
 class ScalarAdapter:
-    """Common set of methods to adapt different unit libraries."""
-
-    magnitude = staticmethod(lambda q: q)
-    """Return the magnitude of a value."""
-
-    units = staticmethod(lambda q: 1)
-    """Return the units of a value.
-
-    This function returns the element that can be multiplied to a scalar
-        to get the dimensioned value. This does not return a string
-        representation of the value's units.
-    """
+    magnitude = staticmethod(lambda value: value)
+    units = staticmethod(lambda value: 1)
+    convert = staticmethod(lambda value, reference: value)
+    is_dimensionless = staticmethod(lambda value: True)
+    dimensionless_value = staticmethod(lambda value: value)
 
     @staticmethod
     def compatible(a, b):
-        """Check if two values are unit-compatible"""
-        if isinstance(a, numbers.Real) and isinstance(b, numbers.Real):
-            return True
-        if not isinstance(a, type(b)):
-            return False
-
-        try:
-            a + b
-            return True
-        except (ValueError, TypeError):
-            return False
-
-    @staticmethod
-    def convert(a, b):
-        """Converts `a` to the units of `b`."""
-        return a
-
-    @staticmethod
-    def format_str(sigfig):
-        """Return a valid formatting string for the unit type"""
-        return "0.{sigfig}g".format(sigfig=sigfig)
+        return isinstance(a, numbers.Real) and isinstance(b, numbers.Real)
 
     @classmethod
-    def is_dimensionless(cls, value):
-        """Check if a value is dimensionless"""
-        return True
+    def format(cls, value, spec, latex=False):
+        text = format(cls.magnitude(value), spec)
+        unit = cls.units(value)
+        if unit is None:
+            return text
+        unit_text = str(unit)
+        if isinstance(unit, numbers.Real) and unit == 1:
+            return text
+        if latex:
+            unit_text = unit_text.replace("_", r"\_").replace("%", r"\%")
+            return text + r"\,\mathrm{" + unit_text + "}"
+        return text + " " + unit_text
 
 
 class PintAdapter(ScalarAdapter):
-    """Adapter for Pint Quantities"""
-
-    units = staticmethod(attrgetter("units"))
     magnitude = staticmethod(attrgetter("magnitude"))
+    units = staticmethod(attrgetter("units"))
+    is_dimensionless = staticmethod(lambda value: bool(value.dimensionless))
+    dimensionless_value = staticmethod(lambda value: value.to("").magnitude)
 
     @staticmethod
     def compatible(a, b):
-        if not isinstance(a, type(b)):
-            return False
-        return a.is_compatible_with(b)
+        return getattr(a, "_REGISTRY", None) is getattr(
+            b, "_REGISTRY", None
+        ) and a.is_compatible_with(b)
 
     @staticmethod
-    def convert(a, b):
-        return a.to(b.units)
+    def convert(value, reference):
+        return value.to(reference.units)
 
     @staticmethod
-    def format_str(sigfig):
-        return "0.{sigfig}G#~P".format(sigfig=sigfig)
-
-    @classmethod
-    def is_dimensionless(cls, value):
-        return value.dimensionless
+    def format(value, spec, latex=False):
+        return format(value, spec + ("~L" if latex else "~P"))
 
 
 class AstropyAdapter(ScalarAdapter):
-    """Adapter for astropy Quantity instance"""
-
-    units = staticmethod(attrgetter("unit"))
     magnitude = staticmethod(attrgetter("value"))
+    units = staticmethod(attrgetter("unit"))
+    is_dimensionless = staticmethod(lambda value: value.unit.is_equivalent(1))
+    dimensionless_value = staticmethod(lambda value: value.to_value(""))
+    compatible = staticmethod(lambda a, b: a.unit.is_equivalent(b.unit))
+    convert = staticmethod(lambda value, reference: value.to(reference.unit))
 
     @staticmethod
-    def compatible(a, b):
-        if not isinstance(a, type(b)):
-            return False
-        return a.unit.is_equivalent(b.unit)
-
-    @classmethod
-    def convert(cls, a, b):
-        new_unit = cls.units(b)
-        return a.to(new_unit)
-
-    @classmethod
-    def is_dimensionless(cls, value):
-        return value.unit.is_equivalent(1)
+    def format(value, spec, latex=False):
+        text = format(value.value, spec)
+        unit = (
+            value.unit.to_string("latex_inline").strip("$")
+            if latex
+            else str(value.unit)
+        )
+        return text + ((r"\," if latex else " ") + unit if unit else "")
 
 
 class ForAllPeopleAdapter(ScalarAdapter):
-    """Adapter for forallpeople Physical instance"""
-
-    units = staticmethod(lambda v: v.split()[1])
     magnitude = staticmethod(attrgetter("value"))
+    units = staticmethod(lambda value: value.split()[1])
+    is_dimensionless = staticmethod(lambda value: not any(value.dimensions))
+    dimensionless_value = staticmethod(lambda value: value.value / value.factor)
+    compatible = staticmethod(lambda a, b: a.dimensions == b.dimensions)
 
-    @classmethod
-    def is_dimensionless(cls, value):
-        return False
+    @staticmethod
+    def format(value, spec, latex=False):
+        # Physical's formatter handles engineering prefixes and its own units.
+        return format(value, spec + ("L" if latex else ""))
 
 
 class UnytAdapter(ScalarAdapter):
-    """Adapter for unyt instance"""
-
-    units = staticmethod(attrgetter("units"))
     magnitude = staticmethod(attrgetter("value"))
+    units = staticmethod(attrgetter("units"))
+    is_dimensionless = staticmethod(lambda value: bool(value.units.is_dimensionless))
+    dimensionless_value = staticmethod(lambda value: value.to_value("dimensionless"))
+    compatible = staticmethod(lambda a, b: a.units.same_dimensions_as(b.units))
+    convert = staticmethod(lambda value, reference: value.to(reference.units))
 
     @staticmethod
-    def compatible(a, b):
-        if not isinstance(a, type(b)):
-            return False
-        return a.units.same_dimensions_as(b.units)
-
-    @classmethod
-    def convert(cls, a, b):
-        new_unit = cls.units(b)
-        return a.to(new_unit)
-
-    @classmethod
-    def is_dimensionless(cls, value):
-        return value.units.is_dimensionless
+    def format(value, spec, latex=False):
+        text = format(value.value.item(), spec)
+        unit = value.units.latex_repr if latex else str(value.units)
+        return text + (r"\," if latex else " ") + unit
 
 
 class QuantitiesAdapter(ScalarAdapter):
-    """Adapter for python-quantities Quantity instance"""
-
-    units = staticmethod(attrgetter("units"))
     magnitude = staticmethod(attrgetter("magnitude"))
+    units = staticmethod(attrgetter("units"))
+    is_dimensionless = staticmethod(lambda value: not value.simplified.dimensionality)
+    dimensionless_value = staticmethod(lambda value: value.simplified.magnitude)
+    compatible = staticmethod(
+        lambda a, b: a.simplified.dimensionality == b.simplified.dimensionality
+    )
+    convert = staticmethod(lambda value, reference: value.rescale(reference.units))
 
-    @classmethod
-    def convert(cls, a, b):
-        new_unit = cls.units(b)
-        return a.rescale(new_unit)
-
-    @classmethod
-    def is_dimensionless(cls, value):
-        return "dimensionless" in str(cls.units(value))
+    @staticmethod
+    def format(value, spec, latex=False):
+        text = format(value.magnitude.item(), spec)
+        unit = str(value.dimensionality)
+        return text + (r"\,\mathrm{" + unit + "}" if latex else " " + unit)
 
 
 _ADAPTERS = {
     "pint": PintAdapter(),
     "astropy": AstropyAdapter(),
+    "forallpeople": ForAllPeopleAdapter(),
     "unyt": UnytAdapter(),
     "quantities": QuantitiesAdapter(),
-    "forallpeople": ForAllPeopleAdapter(),
 }
-
-_DEFAULT_ADAPTER = ScalarAdapter()
+_SCALAR = ScalarAdapter()
 
 
 @functools.cache
 def unit_adapter(value_type):
-    """Map a unit library to an Adapter.
+    """Resolve supported quantity subclasses without importing optional packages."""
+    for cls in value_type.__mro__:
+        adapter = _ADAPTERS.get(cls.__module__.split(".")[0])
+        if adapter is not None:
+            return adapter
+    if issubclass(value_type, numbers.Real) and not issubclass(
+        value_type, (bool, np.bool_)
+    ):
+        return _SCALAR
+    raise TypeError(f"Unsupported scalar or quantity type: {value_type.__name__}")
 
-    For a value `v`, get the corresponding unit library adapter with
-        `unit_adapter(type(v))`.
 
-    Arguments:
-        value_type: Hashable object which has a valid `__module__`.
+def validate(value):
+    """Require a finite, real scalar in a supported backend."""
+    adapter = unit_adapter(type(value))
+    magnitude = np.asarray(adapter.magnitude(value))
+    if magnitude.ndim != 0 or magnitude.dtype.kind not in "iuf":
+        raise TypeError("Expected a real scalar, not an array or complex value")
+    if not math.isfinite(float(magnitude)):
+        raise ValueError("Values must be finite")
+    return value
 
-    Returns:
-        Adapter for the provided unit library.
-        Returns ScalarAdapter if unit library not found.
-    """
-    unit_library = value_type.__module__.split(".")[0]
-    return _ADAPTERS.get(unit_library, _DEFAULT_ADAPTER)
+
+def dimensionless_value(value):
+    validate(value)
+    adapter = unit_adapter(type(value))
+    if not adapter.is_dimensionless(value):
+        raise ValueError("Relative tolerance must be dimensionless")
+    return float(adapter.dimensionless_value(value))
+
+
+def normalize(value, reference):
+    """Validate and convert a scalar to the reference's backend and units."""
+    validate(value)
+    validate(reference)
+    adapter = unit_adapter(type(value))
+    target = unit_adapter(type(reference))
+    if adapter is not target:
+        if adapter is _SCALAR and target.is_dimensionless(reference):
+            units = target.units(reference)
+            return target.convert(value * (units / units), reference)
+        if target is _SCALAR and adapter.is_dimensionless(value):
+            return dimensionless_value(value)
+        raise ValueError("Values must use compatible units and the same unit library")
+    try:
+        if not adapter.compatible(value, reference):
+            raise ValueError("Values have incompatible units or registries")
+        return adapter.convert(value, reference)
+    except (TypeError, AttributeError) as exc:
+        raise ValueError("Values have incompatible units or registries") from exc
+
+
+def snapshot(value):
+    """Own quantity storage; caller mutation cannot change stored results."""
+    return copy(value)
