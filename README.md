@@ -143,7 +143,7 @@ Use Poetry 2.5.1 and the committed `poetry.lock`:
 poetry sync --with examples
 poetry run python -m pytest --cov=worstcase --cov-report=term-missing
 poetry run python scripts/check_notebook.py
-poetry run pip-audit --skip-editable --strict --progress-spinner off
+poetry run python scripts/audit_dependencies.py
 poetry build
 ```
 

@@ -1,9 +1,13 @@
 name: CI
 on:
   push:
+    branches: [master]
   pull_request:
 permissions:
   contents: read
+concurrency:
+  group: ci-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
 jobs:
   tests:
     strategy:
@@ -34,6 +38,6 @@ jobs:
       - run: poetry run black --check worstcase tests examples scripts
       - run: poetry run isort --check-only worstcase tests examples scripts
       - run: poetry run flake8 worstcase tests examples scripts
-      - run: poetry run pip-audit --skip-editable --strict --progress-spinner off
+      - run: poetry run python scripts/audit_dependencies.py
       - run: poetry build
       - run: poetry run python scripts/check_artifacts.py
