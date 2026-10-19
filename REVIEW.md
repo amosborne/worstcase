@@ -115,7 +115,7 @@ integrations, performance costs, reproducibility, packaging, and release permiss
 
 | Finding | Resolution |
 |---|---|
-| A bare PyPI install can select the published 0.x API, which does not match these examples | Require `worstcase>=1.0.0rc1,<2`, explain prerelease availability, and give the checkout fallback without claiming an unpublished release exists. Keep the wording valid after publication. |
+| Release-preparation instructions distracted from the installed-user experience | Use the requested `pip install worstcase` instruction and retain the migration link. Keep prerelease handling in RELEASE.md; the ordinary install command requires publishing a stable 1.0 release. |
 | README examples executed, but their advertised outputs were not checked | Add 14 worked examples with captured outputs; the existing README regression now compares every printed output, including units and LaTeX, and rejects unpaired code/output blocks. |
 | Relative documentation links are unsuitable for a PyPI package description | Use explicit GitHub links for migration, notebook, issues, and release instructions. |
 | Numerical caveats were easy to read as general safety assurances | Demonstrate missed interior minima and a product whose RSS spread is zero despite nonzero corner spread. Explain unsampled singularities, absent RSS warnings, and the distinction between ranges and confidence intervals. |

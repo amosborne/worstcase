@@ -65,6 +65,11 @@ For each release, after explicit approval and the squash merge:
 
 1. Choose the version in `pyproject.toml` before the merge. It is currently
    `1.0.0rc1`; a final `1.0.0` requires a version change and fresh review/checks.
+   The README targets the stable release with `pip install worstcase`. That
+   command normally skips prereleases: publishing only `1.0.0rc1` will not make
+   it select the new API over an existing stable 0.x release. Use
+   `pip install --pre worstcase` when deliberately testing a published candidate;
+   publish stable `1.0.0` for the README's ordinary installation path.
 2. Wait for successful **push CI on the exact master commit**. Create and push
    its matching tag, such as `v1.0.0rc1`, only after release approval.
 3. In GitHub Actions, manually run **Publish to PyPI**, select branch `master`,

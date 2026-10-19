@@ -1,27 +1,40 @@
 # worstcase
 
-**Calculate how input tolerances affect a scalar result, with or without units.**
-Write a formula once, then evaluate its nominal value and uncertainty using corner
-analysis, Monte Carlo sampling, or root-sum-square analysis. Repeated uses of the
-same input stay linked throughout the calculation.
+For a worked engineering example, see my
+[blog post](https://www.osborneee.com/worstcase/) on the end-to-end measurement
+uncertainty of a high-side current-sensing circuit, and the
+[updated notebook](https://github.com/amosborne/worstcase/blob/release/1.0/example.ipynb).
 
-Use it for component tolerances, sensor error budgets, resistor networks, and other
-engineering calculations with a scalar quantity of interest. The reported range
-depends on the analysis method; it is **not a general guarantee of worst-case bounds**.
+## What's the worst that could happen?
+
+Professional engineers spend a disproportionate amount of time considering the worst
+case, especially in fields such as aerospace where the cost of failure can be
+enormous and therefore the tolerance for technical risk is low.
+
+When delivering hardware to a customer it is typical to also deliver analyses as
+data products. One such analysis is the worst-case analysis. Hardware performance
+must be analytically verified to meet requirements for the life of the mission,
+across all operational environments, with worst-case component variations.
+
+The typical method for performing such an analysis is a spreadsheet like
+[this one](https://docs.google.com/spreadsheets/d/1OWK2Hds00IrvRUNogDVzHMQhLLowioNIzL4SbS0E3kI/edit#gid=0).
+The `worstcase` Python package lets you express these calculations as reusable
+formulas, with or without units. Write a formula once, then evaluate it using
+corner analysis, Monte Carlo sampling, or root-sum-square analysis. Repeated uses
+of the same input stay linked throughout the calculation.
+
+The reported range depends on the analysis method; it is **not a general guarantee
+of worst-case bounds**. The examples below show both the capabilities and the limits.
 
 ## Install
 
 Requires Python 3.11 or later; tested on Python 3.11–3.14, Windows and Linux.
 
 ```sh
-python -m pip install "worstcase>=1.0.0rc1,<2"
+pip install worstcase
 ```
 
-**Version note:** examples require the 1.0 API. The version constraint includes
-the `1.0.0rc1` candidate and later 1.x releases; it prevents installing an older,
-incompatible 0.x release. During release preparation, installation will fail if
-no matching release has been published yet. To try a checkout before publication,
-run `python -m pip install .` from its root. Existing users should read the
+Upgrading from 0.x? See the
 [migration guide](https://github.com/amosborne/worstcase/blob/release/1.0/MIGRATION.md).
 
 Plain numbers need no unit package. For the Pint examples below, also install:
