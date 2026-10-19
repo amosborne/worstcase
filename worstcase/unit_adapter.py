@@ -3,6 +3,7 @@
 import functools
 import math
 import numbers
+import sys
 from copy import copy
 from operator import attrgetter
 
@@ -22,17 +23,7 @@ class ScalarAdapter:
 
     @classmethod
     def format(cls, value, spec, latex=False):
-        text = format(cls.magnitude(value), spec)
-        unit = cls.units(value)
-        if unit is None:
-            return text
-        unit_text = str(unit)
-        if isinstance(unit, numbers.Real) and unit == 1:
-            return text
-        if latex:
-            unit_text = unit_text.replace("_", r"\_").replace("%", r"\%")
-            return text + r"\,\mathrm{" + unit_text + "}"
-        return text + " " + unit_text
+        return format(value, spec)
 
 
 class PintAdapter(ScalarAdapter):
@@ -116,8 +107,12 @@ class QuantitiesAdapter(ScalarAdapter):
     @staticmethod
     def format(value, spec, latex=False):
         text = format(value.magnitude.item(), spec)
-        unit = str(value.dimensionality)
-        return text + (r"\,\mathrm{" + unit + "}" if latex else " " + unit)
+        unit = (
+            value.dimensionality.latex.strip("$")
+            if latex
+            else str(value.dimensionality)
+        )
+        return text + (r"\," if latex else " ") + unit
 
 
 _ADAPTERS = {
@@ -128,6 +123,18 @@ _ADAPTERS = {
     "quantities": QuantitiesAdapter(),
 }
 _SCALAR = ScalarAdapter()
+
+
+def register_expression_type(cls):
+    """Use Pint's documented dispatch extension when Pint is already loaded.
+
+    This also protects late-import arithmetic: newly built expression magnitudes
+    become upcast types before Pint can enclose them and drop outer units.
+    No optional backend is imported and no library methods are replaced.
+    """
+    compat = sys.modules.get("pint.compat")
+    if compat is not None:
+        compat.upcast_type_map.setdefault(f"{cls.__module__}.{cls.__qualname__}", cls)
 
 
 @functools.cache

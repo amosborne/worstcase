@@ -3,7 +3,7 @@ import math
 import numpy as np
 import pytest
 
-from worstcase import derive, param
+from worstcase import Expression, derive, param
 from worstcase.unit_adapter import dimensionless_value, normalize, unit_adapter
 
 
@@ -39,7 +39,7 @@ def test_tolerances_and_percentages(backend):
 
 def test_incompatible_dimensions_and_bare_numbers(backend):
     if backend.name == "plain":
-        return
+        pytest.skip("Plain scalars have no physical dimensions")
     with pytest.raises(ValueError):
         param.byrange(1 * backend.V, 0.5, 1.5)
     with pytest.raises(ValueError):
@@ -62,7 +62,7 @@ def test_quantity_constants_and_provenance(backend):
 
 def test_output_normalization_rss_regression(backend):
     if backend.name in ("plain", "forallpeople"):
-        return
+        pytest.skip("This backend does not retain differently scaled unit magnitudes")
     v, mv = backend.V, backend.mV
     x = param.byrange(4 * v, 3 * v, 5 * v)
 
@@ -77,20 +77,25 @@ def test_output_normalization_rss_regression(backend):
 
 def test_quantity_storage_is_owned(backend):
     if backend.name in ("plain", "forallpeople"):
-        return
+        pytest.skip("These scalar values are immutable")
     value = 2 * backend.V
     p = param.byrange(value, 1 * backend.V, 3 * backend.V)
     result = (p * 2).derive()
+    value += 100 * backend.V
     # All these mutable quantity implementations expose an ndarray magnitude.
     adapter = unit_adapter(type(value))
     magnitude = adapter.magnitude(value)
     if isinstance(magnitude, np.ndarray):
         magnitude[...] = 999
     exposed = result.nom
+    exposed += 100 * backend.V
     if isinstance(adapter.magnitude(exposed), np.ndarray):
         adapter.magnitude(exposed)[...] = -999
     assert relative(p.nom, 2 * backend.V) == pytest.approx(1)
     assert relative(result.nom, 4 * backend.V) == pytest.approx(1)
+    assignment = result.derivation.lb[p]
+    assignment += 100 * backend.V
+    assert relative(result.derivation.lb[p], 1 * backend.V) == pytest.approx(1)
 
 
 def test_backend_text_and_latex(backend):
@@ -150,3 +155,124 @@ def test_forallpeople_small_tolerances_are_not_frozen():
     result = x.derive()
     assert result.n_evaluations == 3
     assert result.lb.value < 1 < result.ub.value
+
+
+def test_custom_quantity_arithmetic_cannot_mutate_shared_operands():
+    from pint import UnitRegistry
+
+    registry = UnitRegistry()
+
+    class MutatingQuantity(registry.Quantity):
+        def __add__(self, other):
+            self += other
+            return self
+
+    x = param.byrange(
+        MutatingQuantity(2, "V"),
+        MutatingQuantity(1, "V"),
+        MutatingQuantity(3, "V"),
+    )
+    result = ((x + x) - x).derive()
+    assert result.nom.magnitude == 2
+    assert result.lb.magnitude == 1
+    assert result.ub.magnitude == 3
+    assert x.nom.magnitude == 2
+
+
+def test_numpy_minimum_integer_relative_tolerance():
+    x = param.bytol_rel(np.int64(-(2**63)), 0.1)
+    assert x.lb < x.nom < x.ub
+
+
+def test_handcalcs_renders_evaluated_quantities(backend):
+    from handcalcs.handcalcs import LatexRenderer
+
+    result = param.bytol_rel(10 * backend.V, 0.1).derive()
+    renderer = LatexRenderer(
+        "result",
+        {"result": result},
+        {"precision": 3, "sci_not": False, "override": ""},
+    )
+    latex = renderer.render()
+    assert r"\pm" in latex
+    assert "10" in latex
+
+
+def test_dimensionless_scalar_coercion(backend):
+    dimensionless = backend.V / backend.V
+    dimensional = param.byrange(5 * dimensionless, 4, 6)
+    scalar = param.byrange(5, 4 * dimensionless, 6 * dimensionless)
+    assert dimensionless_value(dimensional.lb) == pytest.approx(4)
+    assert scalar.lb == pytest.approx(4)
+
+
+@pytest.mark.parametrize("output", [float("nan"), float("inf"), 1j, np.array([1])])
+def test_invalid_function_outputs(output):
+    @derive
+    def invalid(value):
+        return output
+
+    with pytest.raises((TypeError, ValueError)):
+        invalid(param.constant(1)).derive()
+
+
+def test_compound_quantities_latex_uses_native_exponents():
+    import quantities as pq
+
+    result = param.bytol_rel(2 * pq.V / pq.s, 0.1).derive()
+    assert r"\frac" in format(result, ".3gL")
+
+
+def test_callback_mutation_preserves_shared_quantity_input(backend):
+    if backend.name == "forallpeople":
+        pytest.skip("Physical is immutable and deliberately rejects +=")
+
+    @derive
+    def shift(value):
+        value += 1 * backend.V
+        return value
+
+    x = param.byrange(2 * backend.V, 1 * backend.V, 3 * backend.V)
+    result = (shift(x) - x).derive()
+    assert relative(result.lb, 1 * backend.V) == pytest.approx(1)
+    assert relative(result.ub, 1 * backend.V) == pytest.approx(1)
+
+
+def test_high_precision_latex_does_not_hide_asymmetry(backend):
+    result = param.byrange(
+        10 * backend.V, 9 * backend.V, (11 + 1e-10) * backend.V
+    ).derive()
+    assert r"\pm" not in format(result, ".14gL")
+
+
+def test_quantity_left_dispatch_never_silently_boxes_an_expression(backend):
+    x = param.byrange(2, 1, 3)
+    try:
+        expression = (5 * backend.V) * x
+    except (TypeError, ValueError):
+        # Some backends reject before our reflected operator can run.
+        return
+    assert isinstance(expression, Expression)
+    result = expression.derive()
+    assert relative(result.lb, 5 * backend.V) == pytest.approx(1)
+    assert relative(result.ub, 15 * backend.V) == pytest.approx(1)
+
+
+def test_pint_late_import_cannot_drop_outer_units():
+    import subprocess
+    import sys
+
+    source = """
+from worstcase import param
+x = param.byrange(2, 1, 3)
+from pint import UnitRegistry
+u = UnitRegistry()
+try:
+    expression = (5 * u.V) * x
+except TypeError:
+    expression = param.constant(5 * u.V) * x
+result = expression.derive()
+assert result.nom.to("V").magnitude == 10
+assert result.lb.to("V").magnitude == 5
+"""
+    subprocess.run([sys.executable, "-c", source], check=True)

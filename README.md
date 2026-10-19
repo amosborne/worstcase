@@ -9,8 +9,11 @@ Version 1.0 is a breaking redesign, currently a release candidate. See
 ## Installation
 
 ```sh
-pip install --pre worstcase
+pip install .
 ```
+
+Install this unpublished candidate from a checkout. After publication, use
+`pip install worstcase` for stable releases.
 
 Requires Python 3.11 or later. Unit libraries are optional: plain real numbers,
 Pint, forallpeople, Astropy, unyt, and python-quantities are supported. Install
@@ -42,6 +45,7 @@ bounds are converted to nominal's units; percentages are valid relative toleranc
 Repeated use of a parameter preserves its identity: `R1 - R1` is exactly zero.
 Two separately constructed resistors with identical specifications vary independently.
 Expressions and parameters are immutable, and input quantities are copied at creation.
+Unit registry metadata is shared; configure registries before constructing analyses.
 
 Expressions support `+`, `-`, `*`, `/`, `**`, unary signs, `abs`, and scalar NumPy
 arithmetic, `sqrt`, `exp`, `log`, `log10`, `sin`, `cos`, and `tan`. Their `.nom`
@@ -90,6 +94,9 @@ An expression wraps scalar constants automatically when it receives an operation
 `R1 * (5 * u.V)` works. For portable quantity-left arithmetic, wrap the quantity
 explicitly as `param.constant(5 * u.V)`: some unit libraries raise or absorb an
 expression before Python calls its reflected operator. We do not patch those libraries.
+For Pint, expression types register through its documented upcast-type extension
+when Pint is loaded. This prevents wrapping an uncertain magnitude and accidentally
+discarding its outer units; no library methods are replaced.
 
 Array-valued uncertain inputs/outputs, implicit conversion to arrays, symbolic truth
 tests, and unsupported NumPy operations fail explicitly. Use a wrapped scalar-output
