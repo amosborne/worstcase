@@ -25,7 +25,7 @@ Pint = ">=0.25,<0.27"
 forallpeople = ">=3,<4"
 unyt = ">=3.1,<4"
 quantities = ">=0.16.4,<0.17"
-astropy = ">=7.2,<8"
+astropy = ">=8.0.2,<9"
 handcalcs = ">=1.9,<2"
 
 [tool.poetry.group.examples]

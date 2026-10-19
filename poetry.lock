@@ -15,41 +15,39 @@ files = [
 
 [[package]]
 name = "astropy"
-version = "7.2.3"
+version = "8.0.2"
 description = "Astronomy and astrophysics core library"
 optional = false
 python-versions = ">=3.11"
 groups = ["dev"]
 files = [
-    {file = "astropy-7.2.3-cp311-abi3-macosx_10_9_x86_64.whl", hash = "sha256:722ac871627899dcf5eb6a8a8374887abb9d15234075607a3d0c5ee44c067091"},
-    {file = "astropy-7.2.3-cp311-abi3-macosx_11_0_arm64.whl", hash = "sha256:292b442ecba854b9b529e05f1e7b25754ca39da1a270c6a88ac125622d7247f8"},
-    {file = "astropy-7.2.3-cp311-abi3-manylinux2014_aarch64.manylinux_2_17_aarch64.manylinux_2_28_aarch64.whl", hash = "sha256:78e0abac1120f8b882521c788ee0f9db6000a98842a15ea58d5f9a746950078c"},
-    {file = "astropy-7.2.3-cp311-abi3-manylinux2014_x86_64.manylinux_2_17_x86_64.manylinux_2_28_x86_64.whl", hash = "sha256:b5c11f668eccebfb7dfcd2103702e38d92850257caf9c227beee38be2d545cad"},
-    {file = "astropy-7.2.3-cp311-abi3-musllinux_1_2_x86_64.whl", hash = "sha256:928c2198ea9d7c9f9034e1ea460538f64ff2ddc23dd60dd723b305a42c29140c"},
-    {file = "astropy-7.2.3-cp311-abi3-win32.whl", hash = "sha256:e000a3633f4f10ce374690bedf8f411ae29ef317b878814856c166f7dd251b7f"},
-    {file = "astropy-7.2.3-cp311-abi3-win_amd64.whl", hash = "sha256:139adb9e427682981429baa88f96cf6da1c5d41e6184371b453b5aed8a6587cc"},
-    {file = "astropy-7.2.3-cp311-abi3-win_arm64.whl", hash = "sha256:71d0c225dca0a10c63f423c1fc239e1e76f012a39017b70843c40a20eab68a5f"},
-    {file = "astropy-7.2.3.tar.gz", hash = "sha256:1deab51837331aabb4fa25a72e9b8a28754990896794832a38ad89810dd9b568"},
+    {file = "astropy-8.0.2-cp311-abi3-macosx_10_9_x86_64.whl", hash = "sha256:3d8492ac4987e2a0634610e387b14b79962b15e8dc5d51667d9100f770aa86e7"},
+    {file = "astropy-8.0.2-cp311-abi3-macosx_11_0_arm64.whl", hash = "sha256:fd67922cca66b7557b58dfcc2271f3871957d85e67c65e712a129ce04ad9ed51"},
+    {file = "astropy-8.0.2-cp311-abi3-manylinux2014_aarch64.manylinux_2_17_aarch64.manylinux_2_28_aarch64.whl", hash = "sha256:d0e63e0011cc984426c478da8601fe177975fe4cb0b2a059ee88d26d60a0890f"},
+    {file = "astropy-8.0.2-cp311-abi3-manylinux2014_x86_64.manylinux_2_17_x86_64.manylinux_2_28_x86_64.whl", hash = "sha256:000d6998bcf4f097257b3776f29f1dafde0967bf1b091edbad95df564eee4eea"},
+    {file = "astropy-8.0.2-cp311-abi3-musllinux_1_2_x86_64.whl", hash = "sha256:f462b80fe16e0603e813efd1098d4d6d94a487e64f95e2d9699e46b641577f8b"},
+    {file = "astropy-8.0.2-cp311-abi3-win32.whl", hash = "sha256:57b2388a229ec572437c5786e0387cb21a08ffe6001e5422ae59d2b8b9242001"},
+    {file = "astropy-8.0.2-cp311-abi3-win_amd64.whl", hash = "sha256:8baaf4451dc4fdbdf635e033378cbb626a9fd4755803c8fdc30ef520fb1688ba"},
+    {file = "astropy-8.0.2-cp311-abi3-win_arm64.whl", hash = "sha256:0827b3f83edbae1bda32ad5ab92d0b85f78dc71cfc2fd5c843c30d57de96d4cb"},
+    {file = "astropy-8.0.2.tar.gz", hash = "sha256:e6af35823099ad6a40b57dbe5ff845f577374ea131925c9fa4b49eeab06c5310"},
 ]
 
 [package.dependencies]
 astropy-iers-data = ">=0.2026.9.28.0.59.37"
-numpy = ">=1.24,<2.7"
-packaging = ">=22.0.0"
-pyerfa = ">=2.0.1.1"
+numpy = ">=2.0"
+packaging = ">=25.0"
+pyerfa = ">=2.0.1.3"
 PyYAML = ">=6.0.0"
 
 [package.extras]
-all = ["asdf-astropy (>=0.3)", "astropy[ipython]", "astropy[jupyter]", "astropy[recommended]", "beautifulsoup4 (>=4.9.3)", "bleach (>=3.2.1)", "bottleneck (>=1.3.3)", "certifi (>=2022.6.15.1)", "dask[dataframe] (>=2024.8.0)", "fsspec[http] (>=2023.4.0)", "h5py (>=3.9.0)", "html5lib (>=1.1)", "jplephem (>=2.17.0)", "mpmath (>=1.2.1)", "pyarrow (>=14.0.2)", "pytz (>=2016.10)", "s3fs (>=2023.4.0)", "sortedcontainers (>=2.1.0)", "uncompresspy (>=0.4.0)"]
-dev = ["astropy[docs]", "astropy[recommended]", "astropy[test]", "astropy[typing]"]
-dev-all = ["astropy[dev]", "astropy[test-all]", "tox (>=4.22.0)"]
-docs = ["Jinja2 (>=3.1.3)", "astropy[recommended]", "matplotlib (!=3.9.0)", "pytest (>=8.0.0)", "sphinx (>=8.2.0,<9)", "sphinx-astropy[confv2] (>=1.9.1)", "sphinx-changelog (>=1.2.0)", "sphinx_design (>=0.6.1)", "sphinxcontrib-globalsubs (>=0.1.1)"]
+all = ["asdf-astropy (>=0.7.0)", "astropy[ipython]", "astropy[jupyter]", "astropy[recommended]", "beautifulsoup4 (>=4.11.2)", "bleach (>=3.2.1)", "bottleneck (>=1.4.0)", "certifi (>=2022.6.15.1)", "dask[dataframe] (>=2024.8.0)", "fsspec[http,s3] (>=2023.4.0)", "h5py (>=3.11.0)", "html5lib (>=1.1)", "jplephem (>=2.17.0)", "mpmath (>=1.2.1)", "pyarrow (>=16.0)", "pytz (>=2016.10)", "s3fs (>=2023.4.0)", "sortedcontainers (>=2.1.0)", "uncompresspy (>=0.4.0)"]
+docs = ["Jinja2 (>=3.1.3)", "astropy[recommended]", "dask[dataframe] (>=2024.8.0)", "fsspec[http,s3] (>=2023.4.0)", "matplotlib (!=3.9.0)", "pytest (>=8.0.0)", "sphinx (>=8.2.0,<9)", "sphinx-astropy[confv3] (>=1.11)", "sphinx-changelog (>=1.2.0)", "sphinx_design (>=0.6.1)", "sphinxcontrib-globalsubs (>=0.1.1)"]
 ipython = ["ipython (>=8.0.0)"]
-jupyter = ["astropy[ipython]", "ipydatagrid (>=1.1.13)", "ipykernel (>=6.16.0)", "ipywidgets (>=7.7.3)", "jupyter-core (>=4.11.2)", "pandas (>=2.0.0)"]
-recommended = ["matplotlib (>=3.8.0)", "narwhals (>=1.42.0)", "pyparsing (>=2.4.0)", "scipy (>=1.9.2)"]
-test = ["coverage (>=6.4.4)", "hypothesis (>=6.84.0)", "pre-commit (>=2.9.3)", "pytest (>=8.0.0)", "pytest-astropy-header (>=0.2.2)", "pytest-cov (>=2.3.1)", "pytest-doctestplus (>=1.4.0)", "pytest-filter-subpackage (>=0.2.0)", "pytest-remotedata (>=0.4.1)", "pytest-run-parallel (>=0.10.0)", "pytest-skip-slow (==1.1.0)", "pytest-xdist (>=2.5.0)", "threadpoolctl (>=3.0.0)"]
-test-all = ["array-api-strict (<2.4) ; python_version < \"3.12\"", "array-api-strict (>=1.0)", "astropy[all]", "astropy[test]", "numpy-quaddtype (>=0.2.2)", "objgraph (>=3.1.2)", "sgp4 (>=2.3)", "skyfield (>=1.42.0)"]
-typing = ["narwhals (>=1.42.0)", "pandas-stubs (>=2.0.0)"]
+jupyter = ["astropy[ipython]", "ipydatagrid (>=1.1.13)", "ipykernel (>=6.16.0)", "ipywidgets (>=7.7.3)", "jupyter-core (>=4.11.2)", "pandas (>=2.2.2)"]
+recommended = ["matplotlib (>=3.8.4)", "narwhals (>=1.42.0)", "scipy (>=1.13)"]
+test = ["coverage (>=7.2.0)", "hypothesis (>=6.84.0)", "pytest (>=8.0.1)", "pytest-astropy-header (>=0.2.2)", "pytest-cov (>=2.3.1)", "pytest-doctestplus (>=1.4.0)", "pytest-filter-subpackage (>=0.2.0)", "pytest-remotedata (>=0.4.1)", "pytest-run-parallel (>=0.10.0)", "pytest-skip-slow (==1.1.0)", "pytest-xdist (>=3.6.0)", "threadpoolctl (>=3.0.0)"]
+test-all = ["array-api-strict (<2.4) ; python_version < \"3.12\"", "array-api-strict (>=1.0)", "astropy[all]", "astropy[test]", "numpy-quaddtype (>=0.2.2)", "objgraph (>=3.1.2)", "sgp4 (>=2.22)", "skyfield (>=1.42.0)"]
+typing = ["narwhals (>=1.42.0)", "pandas-stubs (>=2.0.2)", "scipy-stubs (>=1.14.1.6)"]
 
 [[package]]
 name = "astropy-iers-data"
@@ -2914,4 +2912,4 @@ files = [
 [metadata]
 lock-version = "2.1"
 python-versions = ">=3.11,<4"
-content-hash = "df859f7767a66aba38689499307b44497d77c59e08cb6552c5839047df5ad5b2"
+content-hash = "2b91c1f8f31f14c1c3c6ca331b7812b55b2aef83b561929a1e105362559c1dcf"
