@@ -1,25 +1,25 @@
 repos:
 - repo: local
   hooks:
-    - id: system
+    - id: black
       name: black
       entry: poetry run black
       language: system
       types: [python]
-    - id: system
+    - id: isort
       name: isort
       entry: poetry run isort
       language: system
       types: [python]
-    - id: system
+    - id: flake8
       name: flake8
       entry: poetry run flake8
       language: system
       types: [python]
-    - id: system
+    - id: pytest
       name: pytest
-      entry: poetry run pytest
+      entry: poetry run python -m pytest
       language: system
-      files: worstcase/
-      types: [python]
+      files: ^(worstcase/|tests/|examples/|README\.md|example\.ipynb|pyproject\.toml|poetry\.lock)
+      types: [file]
       pass_filenames: false

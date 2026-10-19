@@ -1,86 +1,154 @@
 # worstcase
 
-For a detailed example of how this software may be leveraged in a true to life example, consider reading this [blog post](https://www.osborneee.com/worstcase/), where the end-to-end measurement uncertainty of a high-side current-sensing circuit is computed.
+Unit-aware scalar expressions for corner analysis (EV), uniform Monte Carlo
+sampling (MC), and endpoint root-sum-square analysis (RSS).
 
-## What's the worst that could happen?
-
-Professional engineers spend a disproportionate amount of time considering the worst case, especially in fields such as aerospace where the cost of failure can be enormous and therefore the tolerance for technical risk is low.
-
-When delivering hardware to a customer it is typical to also deliver analyses as data products. One such analysis is the worst-case analysis. Hardware performance must be analytically verified to meet requirements for the life of the mission, across all operational environments, with worst-case component variations.
-
-The typical method for performing such an analysis is a spreadsheet like [this one](https://docs.google.com/spreadsheets/d/1OWK2Hds00IrvRUNogDVzHMQhLLowioNIzL4SbS0E3kI/edit#gid=0)... the `worstcase` Python package offers a far more effective solution.
-
-## Usage
-
-At its core, the `worstcase` Python package computes three values: the nominal, the lower bound, and the upper bound. These values may be determind either by Extreme Value, Root-Sum-Square, or Monte Carlo methods.
-
-Input parameters are defined by their range or tolerance, (`param.byrange`, `param.bytol`).
-
-```python
-from worstcase import param, derive
-from pint import UnitRegistry
-unit = UnitRegistry()
-
-# define the resistor uncertainties
-R1 = param.bytol(nom=100 * unit.mohm, tol=0.01, rel=True, tag="R1")
-R2 = param.bytol(nom=1.001 * unit.kohm, tol=0.01, rel=True, tag="R2")
-R3 = param.bytol(nom=50.5 * unit.kohm, tol=0.01, rel=True, tag="R3")
-R4 = param.bytol(nom=1.001 * unit.kohm, tol=0.01, rel=True, tag="R4")
-R5 = param.bytol(nom=50.5 * unit.kohm, tol=0.01, rel=True, tag="R5")
-
-# define the amplifier offset voltage
-VOS = param.bytol(nom=0 * unit.mV, tol=150 * unit.uV, rel=False, tag="VOS")
-```
-
-Derived parameters use a decorator to map worst case input parameters to function arguments (`derive.byev`, `derive.bymc`, or `derive.byrss`).
-
-```python
-# define the output voltage
-@derive.byev(r1=R1, r2=R2, r3=R3, r4=R4, r5=R5, vos=VOS)
-def VO(vbus, iload, r1, r2, r3, r4, r5, vos):
-    vp = vbus * r3 / (r2 + r3)
-    vn = vp + vos
-    vo = vn - (vbus - r1 * iload - vn) * r5 / r4
-    return vo
-
-# define the end-to-end uncertainty
-@derive.byev(r1=R1, r2=R2, r3=R3, r4=R4, r5=R5, vos=VOS)
-def IUNC(r1, r2, r3, r4, r5, vos, vbus, iload):
-    vo = VO(vbus, iload, r1, r2, r3, r4, r5, vos)
-    return vo / VO(vbus, iload).nom * iload - iload
-```
-
-The worst case solution is determined by brute force. If desired, the resulting derived parameter can then be used in the definition of another derived parameter to build up a more complicated analysis.
-
-```python
-# calculate at 36V, 1A operating point
-VOUT_1A = VO(vbus=36 * unit.V, iload=1 * unit.A, tag="VOUT_1A")
-IUNC_1A = IUNC(vbus=36 * unit.V, iload=1 * unit.A, tag="IUNC_1A")
-
-print([VOUT_1A, IUNC_1A])
-
-# [VOUT_1A: 5.045 V (nom), 3.647 V (lb), 6.387 V (ub),
-#  IUNC_1A: 0 A (nom), -277 mA (lb), 266 mA (ub)]
-```
-
-Various parameter unit libraries are supported, including [Pint](https://pypi.org/project/Pint/), [forallpeople](https://github.com/connorferster/forallpeople), [astropy](https://github.com/astropy/astropy), [unyt](https://github.com/yt-project/unyt), and [python-quantities](https://github.com/python-quantities/python-quantities).
-Results can also be further analyzed for their uncertainty drivers by performing a sensitivity study (`ss()`).
-
-```python
-# perform sensitivity study at the 36V, 1A operating point
-IUNC_1A_sensitivities = [
-    IUNC_1A(tag="IUNC_1A-R1-sens").ss(R1),
-    IUNC_1A(tag="IUNC_1A-VOS-sens").ss(VOS),
-    IUNC_1A(tag="IUNC_1A-R2-thru-R5-sens").ss([R2, R3, R4, R5]),
-]
-
-print(IUNC_1A_sensitivities)
-
-# [IUNC_1A-R1-sens: 0 A (nom), -10 mA (lb), 10 mA (ub),
-#  IUNC_1A-VOS-sens: 0 A (nom), -1.53 mA (lb), 1.53 mA (ub),
-#  IUNC_1A-R2-thru-R5-sens: 0 A (nom), -265.3 mA (lb), 254.7 mA (ub)]
-```
+Version 1.0 is a breaking redesign, currently a release candidate. See
+[migration instructions](MIGRATION.md) and the [current-sensing notebook](example.ipynb).
 
 ## Installation
 
-`pip install worstcase`
+```sh
+pip install --pre worstcase
+```
+
+Requires Python 3.11 or later. Unit libraries are optional: plain real numbers,
+Pint, forallpeople, Astropy, unyt, and python-quantities are supported. Install
+your preferred library separately. Use one library/registry per calculation.
+
+## Expressions and explicit evaluation
+
+```python
+from pint import UnitRegistry
+from worstcase import param, derive
+
+u = UnitRegistry()
+R1 = param.bytol_rel(10 * u.kohm, 0.01)
+R2 = param.bytol_rel(10 * u.kohm, 0.01)
+vin = param.constant(5 * u.V)
+
+vout = vin * R2 / (R1 + R2)
+result = vout.derive()
+print(f"{result:.4g}")
+assert abs(result.nom.to("V").magnitude - 2.5) < 1e-12
+```
+
+Create independent primitives with `param.byrange(nom, lb, ub)`,
+`param.bytol_rel(nom, rel_tol)` (0.01 means 1%), or
+`param.bytol_abs(nom, abs_tol)`. Relative tolerance uses the absolute magnitude of
+nominal, including for negative values. Tolerances must be nonnegative. Compatible
+bounds are converted to nominal's units; percentages are valid relative tolerances.
+
+Repeated use of a parameter preserves its identity: `R1 - R1` is exactly zero.
+Two separately constructed resistors with identical specifications vary independently.
+Expressions and parameters are immutable, and input quantities are copied at creation.
+
+Expressions support `+`, `-`, `*`, `/`, `**`, unary signs, `abs`, and scalar NumPy
+arithmetic, `sqrt`, `exp`, `log`, `log10`, `sin`, `cos`, and `tan`. Their `.nom`
+property computes nominal only. Expression display does not run a solver; bounds
+require `.derive()`. Results are snapshots: reading `.nom`, `.lb`, `.ub`, formatting,
+or displaying them never reruns an analysis.
+
+```python
+mc = vout.derive(method="mc", n=1000, seed=42)
+rss = vout.derive(method="rss")
+print(mc.n_evaluations, mc.seed)
+print(f"{mc:.3gL}")
+sensitivity = vout.ss(R1)
+```
+
+`.ss(parameter_or_expression)` varies the selected primitive inputs while holding
+all other inputs at nominal. Pass a list for a group, or `[]` to freeze everything.
+`method`, `n`, and `seed` work as in `.derive()`. `n` and `seed` apply only to MC.
+
+EV and MC results expose `.derivation.nom`, `.derivation.lb`, and `.derivation.ub`:
+read-only maps from primitive objects to input assignments. Ties retain the first
+assignment encountered (nominal is evaluated first). RSS has no single joint input
+assignment for its combined bounds, so its lower/upper derivations are `None`.
+`n_evaluations` counts complete root evaluations, including nominal. Fixed inputs
+are excluded from corner enumeration and sampling; constant expressions evaluate once.
+
+## Functions and units
+
+```python
+@derive
+def gain_with_offset(gain, /, offset=0):
+    return gain * 2 + offset
+
+x = param.byrange(2, 1, 3)
+answer = gain_with_offset(x, offset=1).derive()
+assert (answer.nom, answer.lb, answer.ub) == (5, 3, 7)
+assert gain_with_offset(2, offset=1) == 5
+```
+
+Wrapped functions receive concrete values during evaluation and return a real scalar
+or supported scalar quantity. They can use arrays, conditionals, and numerical
+solvers internally. Keep callbacks pure and deterministic. Their exceptions propagate
+with evaluation context. Signature/default/positional-only behavior is preserved.
+
+An expression wraps scalar constants automatically when it receives an operation:
+`R1 * (5 * u.V)` works. For portable quantity-left arithmetic, wrap the quantity
+explicitly as `param.constant(5 * u.V)`: some unit libraries raise or absorb an
+expression before Python calls its reflected operator. We do not patch those libraries.
+
+Array-valued uncertain inputs/outputs, implicit conversion to arrays, symbolic truth
+tests, and unsupported NumPy operations fail explicitly. Use a wrapped scalar-output
+function for a quantity of interest. Reuse an expression to preserve dependencies;
+results cannot be inserted into expression arithmetic. Constructing a new parameter
+from result bounds intentionally creates a new independent uncertainty.
+
+## Display and names
+
+Assignment names are inferred on a best-effort basis, including in ordinary notebooks.
+`tag="custom label"` overrides inference; `tag=""` suppresses a label. Source/AST
+availability, factory calls, and dynamic code can prevent inference; the fallback
+is an empty label. Names never affect identity or calculations.
+
+Use standard numeric format specifications such as `.3g`, `.2f`, or `.2e`.
+Append `L` for a LaTeX uncertainty representation (`.3gL`); notebook results also
+implement `_repr_latex_`. An omitted specification uses `.4g`. Formatting operates
+on result values and never changes their precision or units.
+
+## What the methods mean
+
+- **EV** evaluates every corner of the input box plus nominal. With `k` varying
+  primitives, this costs `2**k + 1` evaluations. It finds extrema for functions whose
+  extrema lie at those corners; it does not find arbitrary interior extrema or
+  prove a global bound. For example, `(x - 0.5)**2` with nominal 1 over `[0, 2]`
+  reports lower bound 0.25 even though its true minimum is 0.
+- **MC** uses independent uniform ranges with Latin hypercube sampling. The result
+  is the observed envelope of `n` samples and nominal, not a confidence interval or
+  guaranteed bound. A seed makes runs repeatable for the same expression structure
+  and dependency versions, without changing NumPy's global random state.
+- **RSS** varies one primitive at a time to both endpoints, then combines positive
+  and negative deviations in quadrature. It assumes independent contributions and
+  is an approximation for nonlinear functions. It warns about asymmetric endpoint
+  responses; absence of a warning does not establish linearity. These ranges do not
+  specify standard deviations or statistical confidence levels.
+
+All methods operate on the same original primitives, without treating intermediate
+expressions as newly independent inputs. Every evaluated value must remain finite
+and dimensionally compatible with the nominal output. The libraries govern affine
+temperature and logarithmic unit arithmetic; use linear units and meaningful
+absolute tolerances for engineering uncertainty calculations.
+
+Deferred work: optimization, general uncertain arrays, correlated distributions,
+and broad NumPy interoperability.
+
+## Development
+
+Use Poetry 2.5.1 and the committed `poetry.lock`:
+
+```sh
+poetry sync --with examples
+poetry run python -m pytest --cov=worstcase --cov-report=term-missing
+poetry run python scripts/check_notebook.py
+poetry run python scripts/audit_dependencies.py
+poetry build
+```
+
+The optional `examples` group provides notebook execution and SciPy without requiring
+a notebook web server. Choose your own editor or notebook frontend. CI validates
+all five backends, documentation examples, the notebook, and installed wheel/sdist
+artifacts containing no unit libraries. Dependabot checks Python dependencies and
+GitHub Actions weekly. See [the release checklist](RELEASE.md) for approval gates.
