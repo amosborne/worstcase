@@ -14,9 +14,12 @@ in draft and do not enable automatic merging.
   ownership, correctness, Python idioms, tests, ergonomics, integrations,
   performance, reproducibility, API boundaries, packaging, and documentation.
 - [x] Fix release-blocking findings and repeat affected checks.
+- [x] Add the manual publishing workflow and protect the GitHub `pypi` environment.
 - [ ] Alex explicitly approves the exact final release-branch commit.
 - [ ] Squash merge into master, retaining contributor credit.
 - [ ] Verify the merged commit before tagging or publishing.
+- [ ] Configure the PyPI trusted publisher described below.
+- [ ] Run the separate publishing workflow and approve its environment gate.
 
 Local final-code validation: 144 tests pass, 6 explicit backend-specific skips,
 98% statement coverage. The strict dependency audit reports no known
@@ -41,3 +44,39 @@ Deferred: optimization solver, array-valued uncertainty propagation, correlated
 distributions, and general NumPy integration. EV enumerates corners; MC samples
 uniform ranges; RSS is an endpoint sensitivity approximation. None proves a
 global bound for arbitrary nonlinear functions.
+
+## Publishing through GitHub
+
+Poetry owns dependency resolution and builds. The official PyPA publishing action
+uploads those verified artifacts using PyPI trusted publishing and generates
+attestations. No long-lived PyPI token or literal `poetry publish` is needed.
+Ordinary CI never publishes; neither does merging or pushing a tag.
+
+One-time setup, while signed in as a maintainer of the existing PyPI project:
+
+1. Open [worstcase publishing settings](https://pypi.org/manage/project/worstcase/settings/publishing/).
+2. Add a GitHub trusted publisher with owner `amosborne`, repository `worstcase`,
+   workflow filename `publish.yml`, and environment `pypi`.
+3. Confirm the GitHub `pypi` environment requires approval by `amosborne`, allows
+   only the `master` branch, and disallows administrator bypass. Self-approval is
+   allowed because this project has one maintainer. Do not add a PyPI token secret.
+
+For each release, after explicit approval and the squash merge:
+
+1. Choose the version in `pyproject.toml` before the merge. It is currently
+   `1.0.0rc1`; a final `1.0.0` requires a version change and fresh review/checks.
+2. Wait for successful **push CI on the exact master commit**. Create and push
+   its matching tag, such as `v1.0.0rc1`, only after release approval.
+3. In GitHub Actions, manually run **Publish to PyPI**, select branch `master`,
+   and enter that tag. The tag must equal `v` plus Poetry's version and point to
+   the exact selected commit. Branch runs other than master cannot publish.
+4. Inspect the build job and its wheel/sdist artifact, then approve deployment
+   to `pypi`. The upload job downloads only this run's verified artifacts; it
+   does not check out source or execute the build with publishing credentials.
+5. Verify the version and provenance on PyPI. Uploads are irreversible; an
+   existing version is not silently skipped or overwritten. Fixes need a new
+   version and another reviewed release.
+
+The publishing workflow cannot run from the release branch. PyPI configuration
+and a real upload are deliberately untested until maintainer setup and release
+approval. See [PyPI's trusted-publishing guide](https://docs.pypi.org/trusted-publishers/using-a-publisher/).

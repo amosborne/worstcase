@@ -43,7 +43,7 @@ https://pint.readthedocs.io/en/stable/user/numpy.html#technical-commentary
 | Performance | Profile-backed inference and copying changes, cached MC ranges, shared-node evaluation counts, bounded repeatable benchmarks, and no repeated graph construction within a solver. See PERFORMANCE.md. |
 | Reproducibility | Stable traversal/parameter order and local seeded generators. EV/MC extrema record input assignments; RSS deliberately has no fictitious joint bound assignment. |
 | API boundaries | Reject unsupported arrays, symbolic truth tests, result-as-expression arithmetic, incompatible backends/registries, and nonfinite outputs. User callbacks must be deterministic and meaningful for the input domain. |
-| Packaging/docs | Poetry lock, clean wheel/sdist installs, executed README and notebook examples, migration guidance, supported-platform CI, and a strict dependency audit. No deployment or publishing workflow. |
+| Packaging/docs | Poetry lock, clean wheel/sdist installs, executed README and notebook examples, migration guidance, supported-platform CI, and a strict dependency audit. Publishing is a separate manual workflow; see the additional review below. |
 
 ## Validation evidence
 
@@ -57,6 +57,31 @@ execution, quality checks, artifact installation, and dependency auditing in
 [CI run 39183817729](https://github.com/amosborne/worstcase/actions/runs/39183817729).
 Both rebuilt artifacts also passed local isolated installs without unit packages.
 Final integration status is tracked in the draft release PR.
+
+## Publishing workflow review
+
+The added workflow uses Poetry builds and the official PyPA trusted-publishing
+action. Version metadata stays in `pyproject.toml`; dispatch input is compared to
+it rather than used as executable shell text. A tag must resolve to the exact
+master dispatch commit with successful push CI. The publishing job receives only
+this run's wheel/sdist artifacts after isolated installation checks. OIDC write
+permission is confined to the upload job, which executes no repository code.
+Actions are pinned by commit and covered by the existing Dependabot configuration.
+The `pypi` environment requires maintainer approval and restricts deployments to
+master. Uploads are serialized and cannot silently skip an existing version.
+
+Review considered accidental PR/branch publication, shell injection through the
+tag input, version/tag drift, unchecked commits, artifact substitution, credential
+scope, duplicate uploads, and build/upload ownership. Remaining trust includes
+GitHub/PyPI, the pinned publishing action, repository administrators, and the
+maintainer approving a deployment. PyPI's publisher must be configured by its
+maintainer; a live upload is outside the current authorization. See RELEASE.md.
+
+Validation: actionlint 1.7.12 accepts both workflows. The actual release-guard
+shell block was exercised with mocked commands: matching inputs pass; wrong
+version, wrong commit, absent successful CI, GitHub API failure, and shell-like
+tag input all fail. GitHub's API confirms the required reviewer, master-only
+branch policy, and disabled administrator bypass. A real publish is untested.
 
 ## Dependabot reconciliation
 
