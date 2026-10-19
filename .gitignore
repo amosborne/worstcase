@@ -1,5 +1,10 @@
 .ipynb_checkpoints/
 dist/
-poetry.lock
 __pycache__/
 .python-version
+.venv/
+.pytest_cache/
+.coverage
+htmlcov/
+build/
+*.egg-info/
