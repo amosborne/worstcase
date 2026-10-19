@@ -17,6 +17,10 @@ At its core, the `worstcase` Python package computes three values: the nominal, 
 Input parameters are defined by their range or tolerance, (`param.byrange`, `param.bytol`).
 
 ```python
+from worstcase import param, derive
+from pint import UnitRegistry
+unit = UnitRegistry()
+
 # define the resistor uncertainties
 R1 = param.bytol(nom=100 * unit.mohm, tol=0.01, rel=True, tag="R1")
 R2 = param.bytol(nom=1.001 * unit.kohm, tol=0.01, rel=True, tag="R2")
@@ -59,7 +63,8 @@ print([VOUT_1A, IUNC_1A])
 #  IUNC_1A: 0 A (nom), -277 mA (lb), 266 mA (ub)]
 ```
 
-Parameter units are supported via the default [Pint](https://pypi.org/project/Pint/) `UnitRegistry` object. Results can also be further analyzed for their uncertainty drivers by performing a sensitivity study (`ss()`).
+Various parameter unit libraries are supported, including [Pint](https://pypi.org/project/Pint/), [forallpeople](https://github.com/connorferster/forallpeople), [astropy](https://github.com/astropy/astropy), [unyt](https://github.com/yt-project/unyt), and [python-quantities](https://github.com/python-quantities/python-quantities).
+Results can also be further analyzed for their uncertainty drivers by performing a sensitivity study (`ss()`).
 
 ```python
 # perform sensitivity study at the 36V, 1A operating point
