@@ -1,571 +1,558 @@
-from collections import namedtuple
-from enum import Enum, auto
-from inspect import Signature
+"""Scalar expression graphs and explicit uncertainty evaluation."""
+
+import operator
+import sys
+import warnings
+from dataclasses import dataclass
+from functools import wraps
+from inspect import signature
 from itertools import product
-from warnings import warn
+from numbers import Integral
+from types import MappingProxyType
 
-import networkx as nx
 import numpy as np
-from pydoe import lhs
+from varname import VarnameException, varname
 
-from worstcase.unit_adapter import unit_adapter
+from .unit_adapter import (
+    dimensionless_value,
+    normalize,
+    snapshot,
+    unit_adapter,
+    validate,
+)
 
 
-class AbstractParameter:
-    @property
-    def units(self):
-        """Return the unit of the Parameter"""
-        return unit_adapter(type(self.nom)).units(self.nom)
+def _tag(explicit):
+    if explicit is not None:
+        if not isinstance(explicit, str):
+            raise TypeError("tag must be a string or None")
+        return explicit
+    try:
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore")
+            name = varname(frame=0, ignore=sys.modules[__name__], raise_exc=False)
+        return name if isinstance(name, str) else ""
+    except VarnameException:
+        return ""
 
-    @property
-    def u(self):
-        """Return the unit of the Parameter"""
-        return self.units
 
-    @staticmethod
-    def get_units(value):
-        """Return the unit of a value."""
-        return unit_adapter(type(value)).units(value)
+class _Display:
+    def __repr__(self):
+        return format(self, "")
 
-    @staticmethod
-    def get_val(value):
-        """Return the unitless value of a dimensioned value"""
-        return unit_adapter(type(value)).magnitude(value)
+    def __format__(self, spec):
+        latex = spec.endswith("L")
+        spec = spec[:-1] if latex else spec
+        spec = spec or ".4g"
+        nom, lb, ub = self.nom, self.lb, self.ub
+        adapter = unit_adapter(type(nom))
 
-    @staticmethod
-    def compare_units(val1, val2):
-        """Check if two values have compatible units.
+        def render(value):
+            return adapter.format(value, spec, latex)
 
-        Arguments:
-            val1, val2: values to compare
-
-        Returns:
-            True if the values have compatible units
-            False if the values have incompatible units
-        """
-        return unit_adapter(type(val1)).compatible(val1, val2)
-
-    @staticmethod
-    def convert_units(val1, val2):
-        """Convert val1 to the units of val2"""
-        return unit_adapter(type(val1)).convert(val1, val2)
-
-    @staticmethod
-    def is_dimensionless(val):
-        """Check if a value is dimensionless"""
-        return unit_adapter(type(val)).is_dimensionless(val)
-
-    def equivalent(self, other):
-        """Check if one Parameter is equivalent to another.
-
-        Equivalency means that nom, lb, and ub are the same,
-            while the tag, derivation, and sigfigs may differ.
-
-        Returns:
-            boolean; True if they are equivalent, false otherwise
-        """
-        if not isinstance(other, AbstractParameter):
-            return False
-        if type(self.units) is not type(other.units):
-            return False
-        return (
-            (self.nom == other.nom) and (self.lb == other.lb) and (self.ub == other.ub)
+        if latex:
+            upper, lower = ub - nom, nom - lb
+            if bool(upper == lower):
+                return "$" + render(nom) + r" \pm " + render(upper) + "$"
+            return (
+                "$"
+                + render(nom)
+                + r"\,{}^{+"
+                + render(upper)
+                + "}_{-"
+                + render(lower)
+                + "}$"
+            )
+        prefix = self.tag + ": " if self.tag else ""
+        return prefix + ", ".join(
+            f"{render(value)} ({label})"
+            for value, label in [(nom, "nom"), (lb, "lb"), (ub, "ub")]
         )
 
+    def _repr_latex_(self):
+        return format(self, "L")
 
-Derivation = namedtuple("Derivation", "nom lb ub")
 
+@dataclass(frozen=True, eq=False, repr=False)
+class Expression:
+    """An immutable scalar computation; evaluate bounds explicitly with derive()."""
 
-class Parameter(AbstractParameter):
-    def __init__(
-        self, nom, lb, ub, tag, sigfig, derivation=Derivation(nom={}, lb={}, ub={})
-    ):
-        """Create a new Parameter.
-
-        Parameters:
-            nom: nominal value of the parameter
-            lb: lower bound of the parameter
-            ub: upper bound of the parameter
-            tag: display identifier for the parameter
-            sigfig: number of significant figures to display as a string
-            derivation: values used in derivation of this value
-
-        Raises:
-            ValueError: if the nom/lb/ub values are inconsistent
-        """
-        if not (
-            AbstractParameter.compare_units(lb, nom)
-            and AbstractParameter.compare_units(ub, nom)
-        ):
-            raise ValueError("Parameter bounds have inconsistent units.")
-        if not (lb <= nom <= ub):
-            raise ValueError("Parameter bounds are out of order.")
-
-        self.nom = nom
-        self.lb = lb
-        self.ub = ub
-        self.tag = tag
-        self.sigfig = sigfig
-        self.derivation = derivation
-
-    @staticmethod
-    def byrange(nom, lb, ub, tag="", sigfig=4):
-        """Define a parameter by an upper and lower bound.
-
-        Parameters:
-            nom: nominal value
-            lb: lower bound on the nominal value
-            ub: upper bound on the nominal value
-            tag: name of the parameter
-            sigfig: number of significant figures to print
-        """
-        if not (
-            AbstractParameter.compare_units(nom, lb)
-            and AbstractParameter.compare_units(nom, ub)
-        ):
-            raise ValueError("Nominal value and bounds must have compatible units")
-        lb = AbstractParameter.convert_units(lb, nom)
-        ub = AbstractParameter.convert_units(ub, nom)
-        return Parameter(nom, lb, ub, tag, sigfig)
-
-    @staticmethod
-    def bytol(nom, tol, rel, tag="", sigfig=4):
-        """Define a parameter by a tolerance.
-
-        Aliases `bytol_rel` and `bytol_abs` with boolean to pick between the two.
-
-        Parameters:
-            nom: nominal value
-            tol: tolerance to be applied to nominal value
-            rel: boolean, defines if tol is a relative value (rel=true)
-                or an absolute value (rel=false)
-            tag: name of the parameter
-            sigfig: number of significant figures to print
-        """
-        if rel:
-            return Parameter.bytol_rel(nom, tol, tag, sigfig)
-        else:
-            return Parameter.bytol_abs(nom, tol, tag, sigfig)
-
-    @staticmethod
-    def bytol_rel(nom, rel_tol, tag="", sigfig=4):
-        """Define a parameter by a relative tolerance.
-
-        ex. bytol_rel(5, 0.1) would result in a nom=5, lb=4.5, ub=5.5.
-
-        Parameters:
-            nom: nominal value
-            rel_tol: relative tolerance to be applied to nominal value
-            tag: name of the parameter
-            sigfig: number of significant figures to print
-        """
-        if not AbstractParameter.is_dimensionless(rel_tol):
-            raise ValueError("Relative value cannot have units")
-
-        tol = abs(nom) * rel_tol
-        return Parameter(nom, nom - tol, nom + tol, tag, sigfig)
-
-    @staticmethod
-    def bytol_abs(nom, abs_tol, tag="", sigfig=4):
-        """Define a parameter by an absolute tolerance.
-
-        ex. bytol_abs(5, 0.1) would result in a nom=5, lb=4.9, ub=5.1.
-
-        Parameters:
-            nom: nominal value
-            abs_tol: absolute tolerance to be applied to nominal value
-            tag: name of the parameter
-            sigfig: number of significant figures to print
-        """
-
-        if not AbstractParameter.compare_units(nom, abs_tol):
-            raise ValueError("Nominal and absolute values must have compatible units")
-        abs_tol = AbstractParameter.convert_units(abs_tol, nom)
-        return Parameter(nom, nom - abs_tol, nom + abs_tol, tag, sigfig)
-
-    def formatter_string(self):
-        """Generate the formatter string for the current data"""
-        return unit_adapter(type(self.nom)).format_str(self.sigfig)
+    _func: object
+    _args: tuple
+    _kwargs: tuple = ()
+    tag: str = ""
+    __array_priority__ = 10000
 
     def __repr__(self):
-        pretty = self.formatter_string()
-        tag = "{tag}: ".format(tag=self.tag) if self.tag else ""
-        nom = ("{nom:" + pretty + "} (nom), ").format(nom=self.nom)
-        lb = ("{lb:" + pretty + "} (lb), ").format(lb=self.lb)
-        ub = ("{ub:" + pretty + "} (ub)").format(ub=self.ub)
+        label = self.tag or getattr(self._func, "__name__", "expression")
+        return f"<Expression {label}; call .derive() for bounds>"
 
-        return tag + nom + lb + ub
+    def __bool__(self):
+        raise TypeError(
+            "An uncertain expression has no truth value; use a wrapped function"
+        )
 
-    def _repr_latex_(self):
-        upper_deviation = self.ub - self.nom
-        lower_deviation = self.nom - self.lb
-        pretty = self.formatter_string()
-        if f"{upper_deviation:{pretty}}" == f"{lower_deviation:{pretty}}":
-            return f"${self.nom:{pretty}} \\pm {upper_deviation:{pretty}}$"
-        else:
-            return (
-                f"${self.nom:{pretty}} \\,{{}}"
-                f"^{{+{upper_deviation:{pretty}}}}"
-                f"_{{-{lower_deviation:{pretty}}}}$"
-            )
+    def __array__(self, dtype=None, copy=None):
+        raise TypeError("Array-valued uncertainty is unsupported; use @derive")
 
-    def __format__(self, fmt_spec):
-        if not fmt_spec:
-            return str(self)
-        if fmt_spec == "L":
-            return self._repr_latex_()
-        else:
-            raise ValueError("Invalid format specifier")
+    def __array_ufunc__(self, ufunc, method, *inputs, **kwargs):
+        if method != "__call__" or kwargs or ufunc not in _UFUNCS:
+            return NotImplemented
+        return _expression(ufunc, inputs)
 
-    def apply(self, funcname, *args, **kwargs):
-        """Apply a function to nominal and upper/lower bound values.
+    def _binary(self, func, other):
+        return _expression(func, (self, other))
 
-        Ex. `self.apply(ito_base_units)` will convert all values to base units
-            if using Pint values.
-        """
-        getattr(self.nom, funcname)(*args, **kwargs)
-        getattr(self.lb, funcname)(*args, **kwargs)
-        getattr(self.ub, funcname)(*args, **kwargs)
+    def _reflected(self, func, other):
+        return _expression(func, (other, self))
+
+    def __add__(self, other):
+        return self._binary(operator.add, other)
+
+    def __radd__(self, other):
+        return self._reflected(operator.add, other)
+
+    def __sub__(self, other):
+        return self._binary(operator.sub, other)
+
+    def __rsub__(self, other):
+        return self._reflected(operator.sub, other)
+
+    def __mul__(self, other):
+        return self._binary(operator.mul, other)
+
+    def __rmul__(self, other):
+        return self._reflected(operator.mul, other)
+
+    def __truediv__(self, other):
+        return self._binary(operator.truediv, other)
+
+    def __rtruediv__(self, other):
+        return self._reflected(operator.truediv, other)
+
+    def __pow__(self, other):
+        return self._binary(operator.pow, other)
+
+    def __rpow__(self, other):
+        return self._reflected(operator.pow, other)
+
+    def __neg__(self):
+        return _expression(operator.neg, (self,))
+
+    def __pos__(self):
         return self
 
-    def graph(self):
-        graph = nx.DiGraph()
-        graph.add_node(self, latest=self)
-        return graph
-
-
-class By(Enum):
-    EV = auto()
-    MC = auto()
-    RSS = auto()
-
-
-class Derivative(AbstractParameter):
-    def __init__(self, func, method, tag, sigfig, n, *args, **kwargs):
-        self.func = func
-        self.method = method
-        self.tag = tag
-        self.sigfig = sigfig
-        self.n = n
-
-        funcsig = Signature.from_callable(func)
-        binding = funcsig.bind_partial(*args, **kwargs)
-        self.kwargs = binding.arguments
-
-    @staticmethod
-    def byev(*args, tag="", sigfig=4, n=None, **kwargs):
-        def decorator(func):
-            return Derivative(func, By.EV, tag, sigfig, n, *args, **kwargs)
-
-        return decorator
-
-    @staticmethod
-    def bymc(*args, tag="", sigfig=4, n=1000, **kwargs):
-        def decorator(func):
-            return Derivative(func, By.MC, tag, sigfig, n, *args, **kwargs)
-
-        return decorator
-
-    @staticmethod
-    def byrss(*args, tag="", sigfig=4, n=None, **kwargs):
-        def decorator(func):
-            return Derivative(func, By.RSS, tag, sigfig, n, *args, **kwargs)
-
-        return decorator
+    def __abs__(self):
+        return _expression(operator.abs, (self,))
 
     @property
     def nom(self):
-        return eval_nominal(self.graph(), self)[1]
+        order = _order(self)
+        return _evaluate(order, _nominal_inputs(order))
+
+    @property
+    def units(self):
+        value = self.nom
+        return unit_adapter(type(value)).units(value)
+
+    @property
+    def u(self):
+        return self.units
+
+    def derive(self, method="ev", *, n=1000, seed=None, tag=None):
+        """Evaluate a stable result using ev, mc, or rss (see method assumptions)."""
+        return _derive(self, method, n, seed, self.tag if tag is None else _tag(tag))
+
+    def ss(self, parameters, method="ev", *, n=1000, seed=None, tag=None):
+        """Vary selected primitive parameters/expressions; freeze other inputs."""
+        return _derive(
+            self, method, n, seed, self.tag if tag is None else _tag(tag), parameters
+        )
+
+
+@dataclass(frozen=True, eq=False, repr=False, init=False)
+class Parameter(Expression, _Display):
+    """An independent primitive parameter. Equal specifications retain identity."""
+
+    _nom: object
+    _lb: object
+    _ub: object
+
+    def __init__(self, nom, lb, ub, tag=None):
+        validate(nom)
+        lb, ub = normalize(lb, nom), normalize(ub, nom)
+        if not bool(lb <= nom <= ub):
+            raise ValueError("Parameter bounds are out of order")
+        object.__setattr__(self, "_func", None)
+        object.__setattr__(self, "_args", ())
+        object.__setattr__(self, "_kwargs", ())
+        object.__setattr__(self, "tag", _tag(tag))
+        for name, value in [("_nom", nom), ("_lb", lb), ("_ub", ub)]:
+            object.__setattr__(self, name, snapshot(value))
+
+    __repr__ = _Display.__repr__
+    __format__ = _Display.__format__
+    _repr_latex_ = _Display._repr_latex_
+
+    @property
+    def nom(self):
+        return snapshot(self._nom)
 
     @property
     def lb(self):
-        return self.derive().lb
+        return snapshot(self._lb)
 
     @property
     def ub(self):
-        return self.derive().ub
+        return snapshot(self._ub)
+
+    @staticmethod
+    def byrange(nom, lb, ub, tag=None):
+        return Parameter(nom, lb, ub, tag)
+
+    @staticmethod
+    def constant(value, tag=None):
+        return Parameter(value, value, value, tag)
+
+    @staticmethod
+    def bytol_rel(nom, rel_tol, tag=None):
+        tolerance = dimensionless_value(rel_tol)
+        if tolerance < 0:
+            raise ValueError("Tolerance must be nonnegative")
+        validate(nom)
+        delta = abs(nom) * tolerance
+        return Parameter(nom, nom - delta, nom + delta, tag)
+
+    @staticmethod
+    def bytol_abs(nom, abs_tol, tag=None):
+        tolerance = normalize(abs_tol, nom)
+        if bool(tolerance < nom * 0):
+            raise ValueError("Tolerance must be nonnegative")
+        return Parameter(nom, nom - tolerance, nom + tolerance, tag)
+
+
+@dataclass(frozen=True)
+class Derivation:
+    """Input assignments; RSS has no joint assignment for either bound."""
+
+    _nom: tuple
+    _lb: tuple | None
+    _ub: tuple | None
+
+    @staticmethod
+    def _mapping(values):
+        if values is None:
+            return None
+        return MappingProxyType({p: snapshot(value) for p, value in values})
 
     @property
-    def derivation(self):
-        return self.derive().derivation
+    def nom(self):
+        return self._mapping(self._nom)
 
-    def __repr__(self):
-        return self.derive().__repr__()
+    @property
+    def lb(self):
+        return self._mapping(self._lb)
 
-    def _repr_latex_(self):
-        return self.derive()._repr_latex_()
+    @property
+    def ub(self):
+        return self._mapping(self._ub)
 
-    def __format__(self, format_spec):
-        return self.derive().__format__(format_spec)
 
-    def __call__(self, *args, tag=None, sigfig=None, n=None, **kwargs):
+@dataclass(frozen=True, eq=False, repr=False)
+class Result(_Display):
+    """An evaluated snapshot. Reuse the expression to preserve dependencies."""
 
-        # If args/kwargs form a complete binding with no AbstractParameters
-        # then return a simple call to the underlying function.
-        try:
-            funcsig = Signature.from_callable(self.func)
-            binding = funcsig.bind(*args, **kwargs)
-            kwargs = binding.arguments
+    _nom: object
+    _lb: object
+    _ub: object
+    tag: str
+    method: str
+    n_evaluations: int
+    seed: int | None
+    derivation: Derivation
 
-            is_abstract_parameter = [
-                isinstance(v, AbstractParameter) for v in kwargs.values()
-            ]
-            if not any(is_abstract_parameter):
-                return self.func(**kwargs)
-        except TypeError:
-            pass
+    @property
+    def nom(self):
+        return snapshot(self._nom)
 
-        # If no arguments are supplied then return the derived Parameter.
-        if not any([args, kwargs, tag]):
-            return self.derive()
+    @property
+    def lb(self):
+        return snapshot(self._lb)
 
-        # Otherwise return a new Derivative with an updated binding.
-        new_kwargs = self.kwargs.copy()
-        funcsig = Signature.from_callable(self.func)
-        binding = funcsig.bind_partial(*args, **kwargs)
-        new_kwargs.update(binding.arguments)
+    @property
+    def ub(self):
+        return snapshot(self._ub)
 
-        tag = self.tag if tag is None else tag
-        sigfig = self.sigfig if sigfig is None else sigfig
-        n = self.n if n is None else n
-        return Derivative(self.func, self.method, tag, sigfig, n, **new_kwargs)
+    @property
+    def units(self):
+        return unit_adapter(type(self._nom)).units(self._nom)
 
-    def graph(self, ss=None):
+    @property
+    def u(self):
+        return self.units
 
-        # Identify the AbstractParameter predecessors to this Derivative.
-        is_abstractparam = lambda arg: isinstance(arg, AbstractParameter)  # noqa: E731
-        preds = filter(is_abstractparam, self.kwargs.values())
 
-        # Build the directed graph recursively, where:
-        # - each node is an AbstractParameter
-        # - each node has a "latest" field to hold the latest
-        #   AbstractParameter assignment which will be used in evaluation
-        graph = nx.DiGraph()
-        graph.add_node(self, latest=self)
-        for pred in preds:
-            graph.add_edge(pred, self)
-            graph = nx.compose(graph, pred.graph())
+_UFUNCS = {
+    np.add,
+    np.subtract,
+    np.multiply,
+    np.divide,
+    np.power,
+    np.negative,
+    np.positive,
+    np.absolute,
+    np.sqrt,
+    np.square,
+    np.exp,
+    np.log,
+    np.log10,
+    np.sin,
+    np.cos,
+    np.tan,
+}
 
-        # A sensitivity study is provided by the "ss" argument, a list of
-        # AbstractParameters. A sensitivity study operates only over Parameters;
-        # if Derivatives are provided they are used only to identify those
-        # Parameters which are ancestors to those Derivatives. Any Parameters
-        # which are not identified for the sensitivity study are replaced such
-        # that their bounds are the same as their nominal value.
-        if ss is not None:
-            ss = set(ss) if isinstance(ss, list) else {ss}
-            is_param = lambda arg: isinstance(arg, Parameter)  # noqa: E731
-            ss_params = set()
-            for abstractparam in ss:
-                if is_param(abstractparam):
-                    ss_params.add(abstractparam)
-                else:
-                    ancestors = nx.ancestors(graph, abstractparam)
-                    ss_params |= set(filter(is_param, ancestors))
 
-            for node in graph.nodes:
-                if is_param(node) and node not in ss_params:
-                    latest = Parameter(
-                        node.nom, node.nom, node.nom, node.tag, node.sigfig
+def _expression(func, args, kwargs=None):
+    def node(value):
+        return (
+            value
+            if isinstance(value, Expression)
+            else Parameter.constant(value, tag="")
+        )
+
+    return Expression(
+        func,
+        tuple(node(a) for a in args),
+        tuple((k, node(v)) for k, v in (kwargs or {}).items()),
+        _tag(None),
+    )
+
+
+@dataclass(frozen=True)
+class _Slot:
+    index: int
+
+
+def _capture(value, inputs):
+    if isinstance(value, Expression):
+        inputs.append(value)
+        return _Slot(len(inputs) - 1)
+    if isinstance(value, (tuple, list)):
+        return type(value)(_capture(item, inputs) for item in value)
+    if isinstance(value, dict):
+        return {k: _capture(v, inputs) for k, v in value.items()}
+    return snapshot(value)
+
+
+def _restore(value, inputs):
+    if isinstance(value, _Slot):
+        return snapshot(inputs[value.index])
+    if isinstance(value, (tuple, list)):
+        return type(value)(_restore(item, inputs) for item in value)
+    if isinstance(value, dict):
+        return {k: _restore(v, inputs) for k, v in value.items()}
+    return snapshot(value)
+
+
+def derive(func):
+    """Keep concrete calls concrete; build graphs for symbolic scalar calls."""
+    sig = signature(func)
+
+    @wraps(func)
+    def wrapped(*args, **kwargs):
+        binding = sig.bind(*args, **kwargs)
+        binding.apply_defaults()
+        inputs = []
+        template = _capture((binding.args, binding.kwargs), inputs)
+        if not inputs:
+            return func(*args, **kwargs)
+
+        @wraps(func)
+        def evaluate(*values):
+            positional, keywords = _restore(template, values)
+            return func(*positional, **keywords)
+
+        return Expression(evaluate, tuple(inputs), tag=_tag(None))
+
+    return wrapped
+
+
+def _order(root):
+    """Iterative postorder: visit shared nodes once and detect cycles early."""
+    ordered, active, done = [], set(), set()
+    stack = [(root, False)]
+    while stack:
+        node, leaving = stack.pop()
+        if leaving:
+            active.remove(node)
+            done.add(node)
+            ordered.append(node)
+        elif node not in done:
+            if node in active:
+                raise ValueError("Expression dependencies contain a cycle")
+            active.add(node)
+            stack.append((node, True))
+            children = (*node._args, *(v for _, v in node._kwargs))
+            stack.extend((child, False) for child in reversed(children))
+    return ordered
+
+
+def _evaluate(order, assignments):
+    values = {}
+    for node in order:
+        if isinstance(node, Parameter):
+            values[node] = snapshot(assignments[node])
+        else:
+            try:
+                values[node] = validate(
+                    node._func(
+                        *(snapshot(values[a]) for a in node._args),
+                        **{k: snapshot(values[v]) for k, v in node._kwargs},
                     )
-                    graph.nodes[node]["latest"] = latest
-
-        return graph
-
-    def ss(self, ss):
-        return self.derive(ss)
-
-    def derive(self, ss=None):
-
-        # Construct a directed graph representing the interdependency of
-        # all AbstractParameters needed to derive this Derivative.
-        graph = self.graph(ss)
-        cycles = list(nx.simple_cycles(graph))
-        if cycles:
-            raise RecursionError("Derivative cannot have cyclical dependencies.")
-
-        # Traverse the graph (in any order). For each node, get the set
-        # of ancestor nodes. If no ancestor node contains an out-edge
-        # to a node not already in the set of ancestor nodes plus the
-        # the current descendant node, flag the current descendant node.
-        for node in graph.nodes:
-            if isinstance(node, Parameter):
-                graph.nodes[node]["flag"] = False
-            else:
-                ancestors = nx.ancestors(graph, node)
-                out_edges = graph.out_edges(ancestors)
-                out_nodes = {edge[1] for edge in out_edges}
-                eval_group = ancestors.copy()
-                eval_group.add(node)
-                graph.nodes[node]["flag"] = eval_group >= out_nodes
-
-        # Continuously loop through the nodes in the graph flagged for
-        # evaluation until only the final derived Parameter remains.
-        # Skip nodes depending on nodes flagged for evaluation.
-        while not isinstance(graph.nodes[self]["latest"], Parameter):
-            eval_nodes = [n for (n, d) in graph.nodes(data=True) if d["flag"]]
-            for node in eval_nodes:
-                ancestors = nx.ancestors(graph, node)
-                if not any([anc in eval_nodes for anc in ancestors]):
-                    # Evaluate using the current nodes method (EV, MC, or RSS).
-                    # This will overrule any depending node's method.
-                    if node.method is By.EV:
-                        param = extreme_value(graph, node)
-                    elif node.method is By.MC:
-                        param = monte_carlo(graph, node)
-                    else:
-                        param = root_sum_square(graph, node)
-
-                    # Update the current node with the latest evaluation.
-                    graph.nodes[node]["latest"] = param
-                    graph.nodes[node]["flag"] = False
-
-        return graph.nodes[self]["latest"]
+                )
+            except Exception as exc:
+                label = node.tag or getattr(node._func, "__name__", "expression")
+                exc.add_note(f"While evaluating {label!r}")
+                raise
+    return snapshot(values[order[-1]])
 
 
-def eval_graph(graph, eval_node, eval_init):
-
-    # Construct the evaluation group and initialize.
-    graph.nodes[eval_node]["val"] = None
-    ancestors = set(nx.ancestors(graph, eval_node)) | {eval_node}
-    eval_group = set()
-    for anc in ancestors:
-        if isinstance(graph.nodes[anc]["latest"], Derivative):
-            graph.nodes[anc]["val"] = None
-            eval_group.add(anc)
-            for pred in graph.predecessors(anc):
-                if isinstance(graph.nodes[pred]["latest"], Parameter):
-                    graph.nodes[pred]["val"] = eval_init[pred]
-                    eval_group.add(pred)
-
-    # Continuously bubble-up evaluations to the eval-node.
-    while graph.nodes[eval_node]["val"] is None:
-        for node in eval_group:
-            # Skip any nodes already evaluated.
-            if not graph.nodes[node]["val"] is None:
-                continue
-
-            # Skip any nodes with unevaluated predecessors.
-            if any(
-                graph.nodes[pred]["val"] is None for pred in graph.predecessors(node)
-            ):
-                continue
-
-            # Construct the keyword arguments.
-            kwargs = node.kwargs.copy()
-            for k, v in kwargs.items():
-                if v in graph.predecessors(node):
-                    kwargs[k] = graph.nodes[v]["val"]
-
-            graph.nodes[node]["val"] = node.func(**kwargs)
-
-    # Return the eval-node final evaluation.
-    return graph.nodes[eval_node]["val"]
+def _nominal_inputs(order):
+    assignments = {p: p.nom for p in order if isinstance(p, Parameter)}
+    backends, registries = set(), set()
+    for value in assignments.values():
+        adapter = unit_adapter(type(value))
+        if type(adapter).__name__ != "ScalarAdapter":
+            backends.add(type(adapter))
+        registry = getattr(value, "_REGISTRY", None)
+        if registry is not None:
+            registries.add(id(registry))
+    if len(backends) > 1 or len(registries) > 1:
+        raise ValueError("An expression must use one unit library and registry")
+    return assignments
 
 
-def eval_nominal(graph, eval_node):
-    # Get the Parameters to initialize of the eval-node.
-    ancestors = set(nx.ancestors(graph, eval_node)) | {eval_node}
-    params = set()
-    for anc in ancestors:
-        if isinstance(graph.nodes[anc]["latest"], Derivative):
-            for pred in graph.predecessors(anc):
-                if isinstance(graph.nodes[pred]["latest"], Parameter):
-                    params.add(pred)
-
-    # Calculate the nominal value.
-    eval_init = {p: p.nom for p in params}
-    nom = eval_graph(graph, eval_node, eval_init)
-
-    return params, nom
-
-
-def extreme_value(graph, eval_node):
-    params, nom = eval_nominal(graph, eval_node)
-
-    derivation_nom = {p: p.nom for p in params}
-
-    # Loop through all max/min combinations for all primitives.
-    nom_units = AbstractParameter.get_units(nom)
-    lbmin, ubmax = float("inf") * nom_units, -float("inf") * nom_units
-    for combo in product((min, max), repeat=len(params)):
-        eval_init = {}
-        for p, c in zip(params, combo):
-            latest = graph.nodes[p]["latest"]
-            eval_init[p] = c(latest.lb, latest.ub)
-        result = eval_graph(graph, eval_node, eval_init)
-
-        if result < lbmin:
-            lbmin = result
-            derivation_lb = eval_init
-
-        if result > ubmax:
-            ubmax = result
-            derivation_ub = eval_init
-
-    derivation = Derivation(nom=derivation_nom, lb=derivation_lb, ub=derivation_ub)
-
-    return Parameter(nom, lbmin, ubmax, eval_node.tag, eval_node.sigfig, derivation)
-
-
-def monte_carlo(graph, eval_node):
-    params, nom = eval_nominal(graph, eval_node)
-
-    # Run n Monte Carlo evaluations with Latin Hypercube Sampling.
-    matrix = lhs(len(params), samples=eval_node.n)
-    results = []
-    for row in matrix:
-        eval_init = {}
-        for p, x in zip(params, row):
-            latest = graph.nodes[p]["latest"]
-            eval_init[p] = x * (latest.ub - latest.lb) + latest.lb
-        results.append(eval_graph(graph, eval_node, eval_init))
-
-    # todo: include derivation in the resulting parameter
-    return Parameter(nom, min(results), max(results), eval_node.tag, eval_node.sigfig)
-
-
-def root_sum_square(graph, eval_node):
-    params, nom = eval_nominal(graph, eval_node)
-
-    # For each parameter, calculate the result using both the lower and upper
-    # bounds while holding all other parameters at their nominal value.
-    lbs = []
-    ubs = []
-    for pvaried in params:
-        eval_init = {p: graph.nodes[p]["latest"].nom for p in params - {pvaried}}
-        eval_init[pvaried] = graph.nodes[pvaried]["latest"].lb
-        result = AbstractParameter.convert_units(
-            eval_graph(graph, eval_node, eval_init), nom
+def _derive(root, method, n, seed, tag, sensitivity=None):
+    if method not in ("ev", "mc", "rss"):
+        raise ValueError("method must be 'ev', 'mc', or 'rss'")
+    if method == "mc":
+        if isinstance(n, bool) or not isinstance(n, Integral) or n < 1:
+            raise ValueError("n must be a positive integer")
+        if seed is not None and (
+            isinstance(seed, bool) or not isinstance(seed, Integral) or seed < 0
+        ):
+            raise ValueError("seed must be a nonnegative integer or None")
+    elif seed is not None or n != 1000:
+        raise ValueError("n and seed apply only to Monte Carlo evaluation")
+    order = _order(root)
+    params = [p for p in order if isinstance(p, Parameter)]
+    nominal = _nominal_inputs(order)
+    varied = [
+        p
+        for p in params
+        if bool(
+            unit_adapter(type(p.nom)).magnitude(p.lb)
+            != unit_adapter(type(p.nom)).magnitude(p.ub)
         )
-        ret_lb = AbstractParameter.get_val(result)
-        eval_init[pvaried] = graph.nodes[pvaried]["latest"].ub
-        result = AbstractParameter.convert_units(
-            eval_graph(graph, eval_node, eval_init), nom
+    ]
+    if sensitivity is not None:
+        selected = (
+            [sensitivity] if isinstance(sensitivity, Expression) else list(sensitivity)
         )
-        ret_ub = AbstractParameter.get_val(result)
-        ubs.append(max([ret_lb, ret_ub]))
-        lbs.append(min([ret_lb, ret_ub]))
+        allowed = set()
+        for item in selected:
+            if not isinstance(item, Expression) or item not in order:
+                raise ValueError("Sensitivity inputs must belong to this expression")
+            allowed.update(p for p in _order(item) if isinstance(p, Parameter))
+        varied = [p for p in varied if p in allowed]
 
-    # Define a metric to detect an asymmetric result and warn the user.
-    nom_val = AbstractParameter.get_val(nom)
-    nom_units = AbstractParameter.get_units(nom)
-    ub_deviation = np.array(ubs) - nom_val
-    lb_deviation = nom_val - np.array(lbs)
-    mean_deviation = (ub_deviation + lb_deviation) / 2
-    max_deviation = np.maximum(ub_deviation, lb_deviation)
-    if np.any(max_deviation > mean_deviation * 1.05):
-        warn("RSS method is not recommended for asymmetric derived parameters.")
+    nom = _evaluate(order, nominal)
+    count = 1
 
-    # Compute the RSS (root-sum-square).
-    ub = nom_val + np.sqrt(np.sum(np.square(np.array(ubs) - nom_val)))
-    lb = nom_val - np.sqrt(np.sum(np.square(np.array(lbs) - nom_val)))
+    def evaluate(assignments):
+        nonlocal count
+        try:
+            value = normalize(_evaluate(order, assignments), nom)
+        except Exception as exc:
+            context = ", ".join(
+                f"{p.tag or 'input'}={value!s}" for p, value in assignments.items()
+            )
+            exc.add_note(f"{method.upper()} input assignment: {context}")
+            raise
+        count += 1
+        return value
 
-    # todo: include derivation in the resulting parameter
-    return Parameter(
-        nom,
-        lb * nom_units,
-        ub * nom_units,
-        eval_node.tag,
-        eval_node.sigfig,
+    lb = ub = nom
+    lower_inputs = upper_inputs = nominal.copy()
+    if method == "rss":
+        lower_squared = upper_squared = None
+        asymmetric = False
+        for p in varied:
+            lo = evaluate({**nominal, p: p.lb}) - nom
+            hi = evaluate({**nominal, p: p.ub}) - nom
+            zero = nom * 0
+            lower = max(-lo, -hi, zero)
+            upper = max(lo, hi, zero)
+            if bool(max(lower, upper) > (lower + upper) / 2 * 1.05):
+                asymmetric = True
+            lower_squared = (
+                lower**2 if lower_squared is None else lower_squared + lower**2
+            )
+            upper_squared = (
+                upper**2 if upper_squared is None else upper_squared + upper**2
+            )
+        if asymmetric:
+            warnings.warn(
+                "RSS is not recommended for asymmetric derived parameters",
+                UserWarning,
+                stacklevel=3,
+            )
+        if varied:
+            lb, ub = nom - lower_squared**0.5, nom + upper_squared**0.5
+        lower_inputs = upper_inputs = None
+    else:
+        if not varied:
+            assignments = ()
+        elif method == "ev":
+            assignments = (
+                {**nominal, **dict(zip(varied, combo))}
+                for combo in product(*[(p.lb, p.ub) for p in varied])
+            )
+        else:
+            rng = np.random.default_rng(seed)
+            # One uniformly jittered sample per stratum, independently permuted
+            # for every primitive: Latin hypercube sampling on uniform ranges.
+            columns = [(rng.permutation(n) + rng.random(n)) / n for p in varied]
+            assignments = (
+                {
+                    **nominal,
+                    **{p: p.lb + float(x) * (p.ub - p.lb) for p, x in zip(varied, row)},
+                }
+                for row in zip(*columns)
+            )
+        for assignment in assignments:
+            value = evaluate(assignment)
+            if bool(value < lb):
+                lb, lower_inputs = value, assignment
+            if bool(value > ub):
+                ub, upper_inputs = value, assignment
+
+    def freeze(mapping):
+        return (
+            None
+            if mapping is None
+            else tuple((p, snapshot(v)) for p, v in mapping.items())
+        )
+
+    validate(lb)
+    validate(ub)
+    return Result(
+        snapshot(nom),
+        snapshot(lb),
+        snapshot(ub),
+        tag,
+        method,
+        count,
+        int(seed) if seed is not None else None,
+        Derivation(freeze(nominal), freeze(lower_inputs), freeze(upper_inputs)),
     )

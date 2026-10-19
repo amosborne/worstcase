@@ -1,48 +1,54 @@
 [project]
 name = "worstcase"
-version = "0.6.0"
-description = "Worst case analysis and sensitivity studies. Extreme Value, Root-Sum-Square, Monte Carlo."
-authors = [{name="Alex Osborne", email="alex@osborneee.com"}]
+version = "1.0.0rc1"
+description = "Unit-aware scalar expressions for corner, Monte Carlo, and RSS analysis."
+authors = [{name = "Alex Osborne", email = "alex@osborneee.com"}]
 license = "MIT"
 readme = "README.md"
-urls.repository = "https://github.com/amosborne/worstcase"
-requires-python = ">=3.11"
-dependencies = ["networkx (>=3.3)", "numpy (>=2.2)", "pyDOE (>=1.0)"]
+requires-python = ">=3.11,<4"
+dependencies = ["numpy>=2.2,<3", "varname>=0.15,<2"]
+
+[project.urls]
+Repository = "https://github.com/amosborne/worstcase"
 
 [tool.poetry.group.dev.dependencies]
-pre-commit = "^4.6.0"
-isort = "^8.0.0"
-black = "^22"
-flake8 = "^7.3.0"
-flake8-pyproject = "^1.2.4"
-pytest = "^9.0.3"
-pytest-randomly = "^4.1.0"
-pytest-cov = "^7.1.0"
-Pint = "^0.24.4"
-forallpeople = "^3.0.0"
-unyt = "^3.1.0"
-quantities = "^0.16.4"
-astropy = "^7.2.0"
-pytest-rerunfailures = "^16.3"
-ipykernel = "^7.2.0"
+pre-commit = ">=4.6,<5"
+isort = ">=8,<10"
+black = ">=26.10,<27"
+flake8 = ">=7.3,<8"
+flake8-pyproject = ">=1.2.4,<2"
+pytest = ">=9,<10"
+pytest-randomly = ">=4,<6"
+pytest-cov = ">=7,<8"
+pip-audit = ">=2.9,<3"
+Pint = ">=0.25,<0.27"
+forallpeople = ">=3,<4"
+unyt = ">=3.1,<4"
+quantities = ">=0.16.4,<0.17"
+astropy = ">=7.2,<8"
+
 [tool.poetry.group.examples]
 optional = true
 
 [tool.poetry.group.examples.dependencies]
-jupyterlab = "^3.0.15"
-matplotlib = "^3.4.2"
-Pint = "^0.24.4"
-jupyterlab-code-formatter = "^1.5.3"
+nbclient = ">=0.10,<0.12"
+nbformat = ">=5.10,<6"
+ipykernel = ">=7.2,<8"
+scipy = ">=1.15,<2"
+Pint = ">=0.25,<0.27"
 
 [tool.isort]
 profile = "black"
-multi_line_output = 3
 
 [tool.flake8]
 max-line-length = 88
-extend-ignore = "E203"
-extend-exclude = "*.ipynb_checkpoints*,.venv,dist"
+extend-ignore = "E203,W503"
+extend-exclude = ".venv,dist,build"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "--strict-markers"
 
 [build-system]
-requires = ["poetry-core>=1.0.0"]
+requires = ["poetry-core>=2.2,<3"]
 build-backend = "poetry.core.masonry.api"
