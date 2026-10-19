@@ -305,3 +305,21 @@ def test_endpoint_failure_retains_input_context():
     with pytest.raises(ValueError, match="outside nominal") as info:
         valid_only_at_nominal(param.byrange(1, 0, 2, tag="x")).derive()
     assert any("EV input assignment: x=0" in note for note in info.value.__notes__)
+
+
+def test_shared_callback_evaluates_once_per_assignment():
+    calls = []
+
+    @derive
+    def record(x):
+        calls.append(x)
+        return x * 2
+
+    shared = record(param.byrange(1, 0, 2))
+    result = (shared + shared).derive(method="mc", n=10, seed=42)
+    assert len(calls) == result.n_evaluations == 11
+
+
+def test_removed_registry_import_explains_migration():
+    with pytest.raises(ImportError, match="no longer supplies"):
+        from worstcase import unit  # noqa: F401

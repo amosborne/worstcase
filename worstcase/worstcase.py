@@ -381,7 +381,8 @@ def _capture(value, inputs):
 
 def _restore(value, inputs):
     if isinstance(value, _Slot):
-        return snapshot(inputs[value.index])
+        # The evaluator already isolated each user-callback operand.
+        return inputs[value.index]
     if isinstance(value, (tuple, list)):
         return type(value)(_restore(item, inputs) for item in value)
     if isinstance(value, dict):

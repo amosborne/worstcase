@@ -9,8 +9,11 @@ Version 1.0 is a breaking redesign, currently a release candidate. See
 ## Installation
 
 ```sh
-pip install --pre worstcase
+pip install .
 ```
+
+Install this unpublished candidate from a checkout. After publication, use
+`pip install worstcase` for stable releases.
 
 Requires Python 3.11 or later. Unit libraries are optional: plain real numbers,
 Pint, forallpeople, Astropy, unyt, and python-quantities are supported. Install
@@ -42,6 +45,7 @@ bounds are converted to nominal's units; percentages are valid relative toleranc
 Repeated use of a parameter preserves its identity: `R1 - R1` is exactly zero.
 Two separately constructed resistors with identical specifications vary independently.
 Expressions and parameters are immutable, and input quantities are copied at creation.
+Unit registry metadata is shared; configure registries before constructing analyses.
 
 Expressions support `+`, `-`, `*`, `/`, `**`, unary signs, `abs`, and scalar NumPy
 arithmetic, `sqrt`, `exp`, `log`, `log10`, `sin`, `cos`, and `tan`. Their `.nom`

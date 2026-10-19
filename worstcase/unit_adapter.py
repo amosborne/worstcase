@@ -22,17 +22,7 @@ class ScalarAdapter:
 
     @classmethod
     def format(cls, value, spec, latex=False):
-        text = format(cls.magnitude(value), spec)
-        unit = cls.units(value)
-        if unit is None:
-            return text
-        unit_text = str(unit)
-        if isinstance(unit, numbers.Real) and unit == 1:
-            return text
-        if latex:
-            unit_text = unit_text.replace("_", r"\_").replace("%", r"\%")
-            return text + r"\,\mathrm{" + unit_text + "}"
-        return text + " " + unit_text
+        return format(value, spec)
 
 
 class PintAdapter(ScalarAdapter):
@@ -116,8 +106,12 @@ class QuantitiesAdapter(ScalarAdapter):
     @staticmethod
     def format(value, spec, latex=False):
         text = format(value.magnitude.item(), spec)
-        unit = str(value.dimensionality)
-        return text + (r"\,\mathrm{" + unit + "}" if latex else " " + unit)
+        unit = (
+            value.dimensionality.latex.strip("$")
+            if latex
+            else str(value.dimensionality)
+        )
+        return text + (r"\," if latex else " ") + unit
 
 
 _ADAPTERS = {
