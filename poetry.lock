@@ -893,6 +893,27 @@ files = [
 ]
 
 [[package]]
+name = "handcalcs"
+version = "1.11.0"
+description = "Render arithmetic calucations in Jupyter as though they were written by hand."
+optional = false
+python-versions = "*"
+groups = ["dev"]
+files = [
+    {file = "handcalcs-1.11.0-py2.py3-none-any.whl", hash = "sha256:b2cdbddd7887f2c988a20b1ba7892bdc73cbdc20bd6598cfbabeeb8b3c284e4c"},
+    {file = "handcalcs-1.11.0.tar.gz", hash = "sha256:e7f47c72faee829310dd61de94ad7bb1d20a1003243611a1706b828a826eb28d"},
+]
+
+[package.dependencies]
+innerscope = ">=0.7.0"
+more_itertools = "*"
+pyparsing = "*"
+
+[package.extras]
+doc = ["sphinx"]
+exporters = ["nb-hideinputs"]
+
+[[package]]
 name = "identify"
 version = "2.6.20"
 description = "File identification library for Python"
@@ -933,6 +954,21 @@ files = [
     {file = "iniconfig-2.3.1-py3-none-any.whl", hash = "sha256:9121e2c1fdb355232495be3194c8dfe87ccc2d5dee45947b78e68f499790d7a7"},
     {file = "iniconfig-2.3.1.tar.gz", hash = "sha256:67f4b9c50da0dedf52af349e7749a80a9057a5031199791b906c3bb3ae878960"},
 ]
+
+[[package]]
+name = "innerscope"
+version = "0.8.0"
+description = "Expose the inner scope of functions"
+optional = false
+python-versions = ">=3.10"
+groups = ["dev"]
+files = [
+    {file = "innerscope-0.8.0-py3-none-any.whl", hash = "sha256:7b59c566b5523ee02588ea066487c3ca3f646c734eab467d9dec55d84f76cbe4"},
+    {file = "innerscope-0.8.0.tar.gz", hash = "sha256:e5d75cedbe945ed7049ed03ae649167dd90f41081a8bf86279c65efbb08b65e7"},
+]
+
+[package.extras]
+test = ["pytest (>=7)"]
 
 [[package]]
 name = "ipykernel"
@@ -1244,6 +1280,18 @@ groups = ["dev"]
 files = [
     {file = "mdurl-0.1.2-py3-none-any.whl", hash = "sha256:84008a41e51615a49fc9966191ff91509e3c40b939176e643fd50a5c2196b8f8"},
     {file = "mdurl-0.1.2.tar.gz", hash = "sha256:bb413d29f5eea38f31dd4754dd7377d4465116fb207585f97bf925588687c1ba"},
+]
+
+[[package]]
+name = "more-itertools"
+version = "11.2.1"
+description = "More routines for operating on iterables, beyond itertools"
+optional = false
+python-versions = ">=3.11"
+groups = ["dev"]
+files = [
+    {file = "more_itertools-11.2.1-py3-none-any.whl", hash = "sha256:35a7377edd1dd6608dcb2cdf534ded55ea32d49448875ad042cd3f879fb1ded0"},
+    {file = "more_itertools-11.2.1.tar.gz", hash = "sha256:cbf08fd0af284dc69718b9b76a8e6203df624d70209ea511e4219d350c856f63"},
 ]
 
 [[package]]
@@ -2806,24 +2854,6 @@ socks = ["pysocks (>=1.5.6,!=1.5.7,<2.0)"]
 zstd = ["backports-zstd (>=1.0.0) ; python_version < \"3.14\""]
 
 [[package]]
-name = "varname"
-version = "1.0.0"
-description = "Dark magics about variable names in python."
-optional = false
-python-versions = ">=3.9"
-groups = ["main"]
-files = [
-    {file = "varname-1.0.0-py3-none-any.whl", hash = "sha256:1125bfe981c3bbbe56988f5cb85fdcd7cad923b153283c2d464aea8b4c833d51"},
-    {file = "varname-1.0.0.tar.gz", hash = "sha256:7156d6a3447b4232e2d804e9df6a4201587e769fa05eee2c465f76e9fbb4ec57"},
-]
-
-[package.dependencies]
-executing = ">=2.1"
-
-[package.extras]
-all = ["asttokens (==3.*)", "pure-eval (==0.*)"]
-
-[[package]]
 name = "virtualenv"
 version = "21.14.11"
 description = "Virtual Python Environment builder"
@@ -2884,4 +2914,4 @@ files = [
 [metadata]
 lock-version = "2.1"
 python-versions = ">=3.11,<4"
-content-hash = "24762585125704cd26a9e3f2388e4b0c85fee29dfded92f1c12fddfbda355997"
+content-hash = "df859f7767a66aba38689499307b44497d77c59e08cb6552c5839047df5ad5b2"

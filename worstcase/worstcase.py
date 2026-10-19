@@ -1,5 +1,6 @@
 """Scalar expression graphs and explicit uncertainty evaluation."""
 
+import ast
 import operator
 import sys
 import warnings
@@ -11,9 +12,10 @@ from numbers import Integral
 from types import MappingProxyType
 
 import numpy as np
-from varname import VarnameException, varname
+from executing import Source
 
 from .unit_adapter import (
+    ScalarAdapter,
     dimensionless_value,
     normalize,
     snapshot,
@@ -27,13 +29,33 @@ def _tag(explicit):
         if not isinstance(explicit, str):
             raise TypeError("tag must be a string or None")
         return explicit
+    frame = None
     try:
-        with warnings.catch_warnings():
-            warnings.simplefilter("ignore")
-            name = varname(frame=0, ignore=sys.modules[__name__], raise_exc=False)
-        return name if isinstance(name, str) else ""
-    except VarnameException:
+        frame = sys._getframe(1)
+        for _ in range(32):
+            if frame is None:
+                return ""
+            if frame.f_globals.get("__name__") != __name__:
+                break
+            frame = frame.f_back
+        else:
+            return ""
+        node = Source.executing(frame).node
+        parent = getattr(node, "parent", None)
+        if isinstance(parent, ast.Assign) and parent.value is node:
+            target = parent.targets[0] if len(parent.targets) == 1 else None
+        elif (
+            isinstance(parent, (ast.AnnAssign, ast.NamedExpr)) and parent.value is node
+        ):
+            target = parent.target
+        else:
+            return ""
+        return target.id if isinstance(target, ast.Name) else ""
+    except Exception:
+        # Missing source must never affect a calculation or keep a frame alive.
         return ""
+    finally:
+        del frame
 
 
 class _Display:
@@ -79,7 +101,6 @@ class Expression:
 
     _func: object
     _args: tuple
-    _kwargs: tuple = ()
     tag: str = ""
     __array_priority__ = 10000
 
@@ -171,7 +192,7 @@ class Expression:
 
 
 @dataclass(frozen=True, eq=False, repr=False, init=False)
-class Parameter(Expression, _Display):
+class Parameter(_Display, Expression):
     """An independent primitive parameter. Equal specifications retain identity."""
 
     _nom: object
@@ -185,14 +206,9 @@ class Parameter(Expression, _Display):
             raise ValueError("Parameter bounds are out of order")
         object.__setattr__(self, "_func", None)
         object.__setattr__(self, "_args", ())
-        object.__setattr__(self, "_kwargs", ())
         object.__setattr__(self, "tag", _tag(tag))
         for name, value in [("_nom", nom), ("_lb", lb), ("_ub", ub)]:
             object.__setattr__(self, name, snapshot(value))
-
-    __repr__ = _Display.__repr__
-    __format__ = _Display.__format__
-    _repr_latex_ = _Display._repr_latex_
 
     @property
     def nom(self):
@@ -220,7 +236,7 @@ class Parameter(Expression, _Display):
         if tolerance < 0:
             raise ValueError("Tolerance must be nonnegative")
         validate(nom)
-        delta = abs(nom) * tolerance
+        delta = abs(nom * tolerance)
         return Parameter(nom, nom - delta, nom + delta, tag)
 
     @staticmethod
@@ -312,7 +328,27 @@ _UFUNCS = {
 }
 
 
-def _expression(func, args, kwargs=None):
+_PURE_OPERATIONS = _UFUNCS | {
+    operator.add,
+    operator.sub,
+    operator.mul,
+    operator.truediv,
+    operator.pow,
+    operator.neg,
+    operator.abs,
+}
+_NATIVE_MODULES = {
+    "builtins",
+    "numpy",
+    "pint",
+    "astropy",
+    "forallpeople",
+    "unyt",
+    "quantities",
+}
+
+
+def _expression(func, args):
     def node(value):
         return (
             value
@@ -323,8 +359,7 @@ def _expression(func, args, kwargs=None):
     return Expression(
         func,
         tuple(node(a) for a in args),
-        tuple((k, node(v)) for k, v in (kwargs or {}).items()),
-        _tag(None),
+        tag=_tag(None),
     )
 
 
@@ -354,6 +389,16 @@ def _restore(value, inputs):
     return snapshot(value)
 
 
+def _has_expression(value):
+    if isinstance(value, Expression):
+        return True
+    if isinstance(value, (tuple, list)):
+        return any(_has_expression(item) for item in value)
+    if isinstance(value, dict):
+        return any(_has_expression(item) for item in value.values())
+    return False
+
+
 def derive(func):
     """Keep concrete calls concrete; build graphs for symbolic scalar calls."""
     sig = signature(func)
@@ -362,10 +407,11 @@ def derive(func):
     def wrapped(*args, **kwargs):
         binding = sig.bind(*args, **kwargs)
         binding.apply_defaults()
-        inputs = []
-        template = _capture((binding.args, binding.kwargs), inputs)
-        if not inputs:
+        arguments = (binding.args, binding.kwargs)
+        if not _has_expression(arguments):
             return func(*args, **kwargs)
+        inputs = []
+        template = _capture(arguments, inputs)
 
         @wraps(func)
         def evaluate(*values):
@@ -392,7 +438,7 @@ def _order(root):
                 raise ValueError("Expression dependencies contain a cycle")
             active.add(node)
             stack.append((node, True))
-            children = (*node._args, *(v for _, v in node._kwargs))
+            children = node._args
             stack.extend((child, False) for child in reversed(children))
     return ordered
 
@@ -404,10 +450,14 @@ def _evaluate(order, assignments):
             values[node] = snapshot(assignments[node])
         else:
             try:
+                operands = [values[a] for a in node._args]
+                pure = node._func in _PURE_OPERATIONS and all(
+                    type(value).__module__.split(".")[0] in _NATIVE_MODULES
+                    for value in operands
+                )
                 values[node] = validate(
                     node._func(
-                        *(snapshot(values[a]) for a in node._args),
-                        **{k: snapshot(values[v]) for k, v in node._kwargs},
+                        *(operands if pure else map(snapshot, operands)),
                     )
                 )
             except Exception as exc:
@@ -422,7 +472,7 @@ def _nominal_inputs(order):
     backends, registries = set(), set()
     for value in assignments.values():
         adapter = unit_adapter(type(value))
-        if type(adapter).__name__ != "ScalarAdapter":
+        if type(adapter) is not ScalarAdapter:
             backends.add(type(adapter))
         registry = getattr(value, "_REGISTRY", None)
         if registry is not None:
@@ -523,10 +573,17 @@ def _derive(root, method, n, seed, tag, sensitivity=None):
             # One uniformly jittered sample per stratum, independently permuted
             # for every primitive: Latin hypercube sampling on uniform ranges.
             columns = [(rng.permutation(n) + rng.random(n)) / n for p in varied]
+            ranges = []
+            for p in varied:
+                lower, upper = p.lb, p.ub
+                ranges.append((p, lower, upper - lower))
             assignments = (
                 {
                     **nominal,
-                    **{p: p.lb + float(x) * (p.ub - p.lb) for p, x in zip(varied, row)},
+                    **{
+                        p: lower + float(x) * width
+                        for (p, lower, width), x in zip(ranges, row)
+                    },
                 }
                 for row in zip(*columns)
             )

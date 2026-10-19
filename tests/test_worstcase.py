@@ -227,6 +227,16 @@ def test_name_inference_and_explicit_overrides():
     assert resistor.tag == "resistor"
     total = resistor + 1
     assert total.tag == "total"
+    annotated: Expression = resistor + 2
+    assert annotated.tag == "annotated"
+
+    @derive
+    def double(value):
+        return 2 * value
+
+    wrapped = double(resistor)
+    assert wrapped.tag == "wrapped"
+    assert [param.constant(1)][0].tag == ""
     assert param.constant(1, tag="custom").tag == "custom"
     assert param.constant(1, tag="").tag == ""
     assert eval("param.constant(1)").tag == ""
@@ -270,3 +280,28 @@ def test_wrapped_callback_mutation_cannot_change_expression_inputs():
     items.append(100)
     result = expression.derive()
     assert (result.nom, result.lb, result.ub) == (3, 2, 4)
+
+
+def test_concrete_wrapped_calls_do_not_copy_user_objects():
+    class Uncopyable:
+        def __copy__(self):
+            raise RuntimeError("must not copy")
+
+    @derive
+    def identity(value):
+        return value
+
+    value = Uncopyable()
+    assert identity(value) is value
+
+
+def test_endpoint_failure_retains_input_context():
+    @derive
+    def valid_only_at_nominal(x):
+        if x != 1:
+            raise ValueError("outside nominal")
+        return x
+
+    with pytest.raises(ValueError, match="outside nominal") as info:
+        valid_only_at_nominal(param.byrange(1, 0, 2, tag="x")).derive()
+    assert any("EV input assignment: x=0" in note for note in info.value.__notes__)

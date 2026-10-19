@@ -150,3 +150,44 @@ def test_forallpeople_small_tolerances_are_not_frozen():
     result = x.derive()
     assert result.n_evaluations == 3
     assert result.lb.value < 1 < result.ub.value
+
+
+def test_custom_quantity_arithmetic_cannot_mutate_shared_operands():
+    from pint import UnitRegistry
+
+    registry = UnitRegistry()
+
+    class MutatingQuantity(registry.Quantity):
+        def __add__(self, other):
+            self += other
+            return self
+
+    x = param.byrange(
+        MutatingQuantity(2, "V"),
+        MutatingQuantity(1, "V"),
+        MutatingQuantity(3, "V"),
+    )
+    result = ((x + x) - x).derive()
+    assert result.nom.magnitude == 2
+    assert result.lb.magnitude == 1
+    assert result.ub.magnitude == 3
+    assert x.nom.magnitude == 2
+
+
+def test_numpy_minimum_integer_relative_tolerance():
+    x = param.bytol_rel(np.int64(-(2**63)), 0.1)
+    assert x.lb < x.nom < x.ub
+
+
+def test_handcalcs_renders_evaluated_quantities(backend):
+    from handcalcs.handcalcs import LatexRenderer
+
+    result = param.bytol_rel(10 * backend.V, 0.1).derive()
+    renderer = LatexRenderer(
+        "result",
+        {"result": result},
+        {"precision": 3, "sci_not": False, "override": ""},
+    )
+    latex = renderer.render()
+    assert r"\pm" in latex
+    assert "10" in latex
