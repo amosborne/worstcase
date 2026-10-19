@@ -47,8 +47,18 @@ def test_internal_linear_solve_matches_resistor_network():
     assert gain.ss([R2, R3, R4, R5]).lb == pytest.approx(result.lb)
 
 
-def test_readme_python_examples_execute():
+def test_readme_python_examples_and_printed_outputs(capsys):
     namespace = {}
     readme = Path(__file__).resolve().parents[1] / "README.md"
-    for source in re.findall(r"```python\n(.*?)```", readme.read_text(), re.DOTALL):
+    blocks = re.findall(
+        r"```(python|text)\n(.*?)```", readme.read_text(encoding="utf-8"), re.DOTALL
+    )
+    assert blocks, "README must contain executable usage examples"
+    assert len(blocks) % 2 == 0, "Each Python example needs a text output block"
+    for index in range(0, len(blocks), 2):
+        (language, source), (output_language, expected) = blocks[index : index + 2]
+        assert (language, output_language) == ("python", "text")
         exec(compile(source, str(readme), "exec"), namespace)
+        assert (
+            capsys.readouterr().out.strip() == expected.strip()
+        ), f"README example {index // 2 + 1} output changed:\n{source}"

@@ -104,6 +104,42 @@ reported **no known vulnerabilities** through the strict audit script. GitHub's
 default-branch alerts remain open until the approved release reaches master;
 none has been dismissed merely to hide it.
 
+## Additional pre-merge review: installed-user documentation
+
+Reviewed the release at `cebb9346ab4252916f56c24856c6f38d45d8559b` again, with
+particular attention to the experience of installing from PyPI and learning the
+API from the package description. Runtime implementation is unchanged by this
+documentation pass. Revisited simplicity, shared input identity, mutable value
+ownership, numerical correctness, idiomatic usage, coverage, ergonomics, unit
+integrations, performance costs, reproducibility, packaging, and release permissions.
+
+| Finding | Resolution |
+|---|---|
+| A bare PyPI install can select the published 0.x API, which does not match these examples | Require `worstcase>=1.0.0rc1,<2`, explain prerelease availability, and give the checkout fallback without claiming an unpublished release exists. Keep the wording valid after publication. |
+| README examples executed, but their advertised outputs were not checked | Add 14 worked examples with captured outputs; the existing README regression now compares every printed output, including units and LaTeX, and rejects unpaired code/output blocks. |
+| Relative documentation links are unsuitable for a PyPI package description | Use explicit GitHub links for migration, notebook, issues, and release instructions. |
+| Numerical caveats were easy to read as general safety assurances | Demonstrate missed interior minima and a product whose RSS spread is zero despite nonzero corner spread. Explain unsampled singularities, absent RSS warnings, and the distinction between ranges and confidence intervals. |
+| Implementation and maintainer details distracted from ordinary use | Lead with installation and a complete calculation; expand input specification, units, methods, sensitivity, provenance, callbacks, NumPy, labels, and formatting. Keep development instructions short. |
+| Exact sample outputs can imply cross-version reproducibility | State the dependency-version scope of seeded MC repeatability; keep displayed numbers rounded and checked against the locked environment. |
+
+Independent numerical probes used NumPy seed 731 to generate 40 four-input affine
+models with signed coefficients and shared-input cancellation. EV bounds matched
+the analytic sum of absolute contributions; RSS matched their Euclidean norm;
+100-sample seeded MC envelopes stayed inside the analytic bounds. A separate
+`1/x` probe with nominal 1 and range [-1, 2] confirmed that finite EV evaluations
+do not detect an unsampled interior singularity. The README's zero-nominal product
+example confirms the RSS interaction blind spot without relying on a warning.
+
+Validation for this pass: 144 tests passed, 6 explicit skips, and 98% statement
+coverage. All 14 README examples match their printed outputs. Poetry builds both
+artifacts; wheel metadata contains the exact UTF-8 README with Markdown content
+type, unit symbols, and output blocks. Black, isort, and flake8 pass.
+
+No additional runtime defect or release-blocking finding was found in this pass.
+These probes strengthen the evidence for documented behavior; they do not prove
+correctness for arbitrary callbacks or nonlinear models. Existing domain limits
+and the explicit master-merge/publication approval gates remain in force.
+
 ## Remaining limits and release gate
 
 No known blocking review finding remains after the corrections and passing
