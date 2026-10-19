@@ -3,7 +3,7 @@
 For a worked engineering example, see my
 [blog post](https://www.osborneee.com/worstcase/) on the end-to-end measurement
 uncertainty of a high-side current-sensing circuit, and the
-[updated notebook](https://github.com/amosborne/worstcase/blob/release/1.0/example.ipynb).
+[updated notebook](https://github.com/amosborne/worstcase/blob/v1.0.1/example.ipynb).
 
 ## What's the worst that could happen?
 
@@ -418,7 +418,7 @@ nominal result. Numerical precision and the validity of your engineering model
 still matter, regardless of the method chosen.
 
 For a larger worked circuit, see the
-[current-sensing notebook](https://github.com/amosborne/worstcase/blob/release/1.0/example.ipynb).
+[current-sensing notebook](https://github.com/amosborne/worstcase/blob/v1.0.1/example.ipynb).
 Report problems or request features through
 [GitHub issues](https://github.com/amosborne/worstcase/issues).
 
