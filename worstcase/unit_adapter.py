@@ -91,7 +91,7 @@ class AstropyAdapter(ScalarAdapter):
 
     @classmethod
     def is_dimensionless(cls, value):
-        return str(cls.units(value)) == ""
+        return value.unit.is_equivalent(1)
 
 
 class ForAllPeopleAdapter(ScalarAdapter):

@@ -162,7 +162,7 @@ class Parameter(AbstractParameter):
         if not AbstractParameter.is_dimensionless(rel_tol):
             raise ValueError("Relative value cannot have units")
 
-        tol = nom * rel_tol
+        tol = abs(nom) * rel_tol
         return Parameter(nom, nom - tol, nom + tol, tag, sigfig)
 
     @staticmethod
@@ -535,9 +535,15 @@ def root_sum_square(graph, eval_node):
     for pvaried in params:
         eval_init = {p: graph.nodes[p]["latest"].nom for p in params - {pvaried}}
         eval_init[pvaried] = graph.nodes[pvaried]["latest"].lb
-        ret_lb = AbstractParameter.get_val(eval_graph(graph, eval_node, eval_init))
+        result = AbstractParameter.convert_units(
+            eval_graph(graph, eval_node, eval_init), nom
+        )
+        ret_lb = AbstractParameter.get_val(result)
         eval_init[pvaried] = graph.nodes[pvaried]["latest"].ub
-        ret_ub = AbstractParameter.get_val(eval_graph(graph, eval_node, eval_init))
+        result = AbstractParameter.convert_units(
+            eval_graph(graph, eval_node, eval_init), nom
+        )
+        ret_ub = AbstractParameter.get_val(result)
         ubs.append(max([ret_lb, ret_ub]))
         lbs.append(min([ret_lb, ret_ub]))
 
