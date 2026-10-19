@@ -94,6 +94,9 @@ An expression wraps scalar constants automatically when it receives an operation
 `R1 * (5 * u.V)` works. For portable quantity-left arithmetic, wrap the quantity
 explicitly as `param.constant(5 * u.V)`: some unit libraries raise or absorb an
 expression before Python calls its reflected operator. We do not patch those libraries.
+For Pint, expression types register through its documented upcast-type extension
+when Pint is loaded. This prevents wrapping an uncertain magnitude and accidentally
+discarding its outer units; no library methods are replaced.
 
 Array-valued uncertain inputs/outputs, implicit conversion to arrays, symbolic truth
 tests, and unsupported NumPy operations fail explicitly. Use a wrapped scalar-output

@@ -18,6 +18,7 @@ from .unit_adapter import (
     ScalarAdapter,
     dimensionless_value,
     normalize,
+    register_expression_type,
     snapshot,
     unit_adapter,
     validate,
@@ -74,16 +75,11 @@ class _Display:
 
         if latex:
             upper, lower = ub - nom, nom - lb
-            if bool(upper == lower):
-                return "$" + render(nom) + r" \pm " + render(upper) + "$"
+            upper_text, lower_text = render(upper), render(lower)
+            if upper_text == lower_text:
+                return "$" + render(nom) + r" \pm " + upper_text + "$"
             return (
-                "$"
-                + render(nom)
-                + r"\,{}^{+"
-                + render(upper)
-                + "}_{-"
-                + render(lower)
-                + "}$"
+                "$" + render(nom) + r"\,{}^{+" + upper_text + "}_{-" + lower_text + "}$"
             )
         prefix = self.tag + ": " if self.tag else ""
         return prefix + ", ".join(
@@ -103,6 +99,10 @@ class Expression:
     _args: tuple
     tag: str = ""
     __array_priority__ = 10000
+
+    def __new__(cls, *args, **kwargs):
+        register_expression_type(cls)
+        return super().__new__(cls)
 
     def __repr__(self):
         label = self.tag or getattr(self._func, "__name__", "expression")

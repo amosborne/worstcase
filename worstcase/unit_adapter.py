@@ -3,6 +3,7 @@
 import functools
 import math
 import numbers
+import sys
 from copy import copy
 from operator import attrgetter
 
@@ -122,6 +123,18 @@ _ADAPTERS = {
     "quantities": QuantitiesAdapter(),
 }
 _SCALAR = ScalarAdapter()
+
+
+def register_expression_type(cls):
+    """Use Pint's documented dispatch extension when Pint is already loaded.
+
+    This also protects late-import arithmetic: newly built expression magnitudes
+    become upcast types before Pint can enclose them and drop outer units.
+    No optional backend is imported and no library methods are replaced.
+    """
+    compat = sys.modules.get("pint.compat")
+    if compat is not None:
+        compat.upcast_type_map.setdefault(f"{cls.__module__}.{cls.__qualname__}", cls)
 
 
 @functools.cache

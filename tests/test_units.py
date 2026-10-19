@@ -3,7 +3,7 @@ import math
 import numpy as np
 import pytest
 
-from worstcase import derive, param
+from worstcase import Expression, derive, param
 from worstcase.unit_adapter import dimensionless_value, normalize, unit_adapter
 
 
@@ -236,3 +236,43 @@ def test_callback_mutation_preserves_shared_quantity_input(backend):
     result = (shift(x) - x).derive()
     assert relative(result.lb, 1 * backend.V) == pytest.approx(1)
     assert relative(result.ub, 1 * backend.V) == pytest.approx(1)
+
+
+def test_high_precision_latex_does_not_hide_asymmetry(backend):
+    result = param.byrange(
+        10 * backend.V, 9 * backend.V, (11 + 1e-10) * backend.V
+    ).derive()
+    assert r"\pm" not in format(result, ".14gL")
+
+
+def test_quantity_left_dispatch_never_silently_boxes_an_expression(backend):
+    x = param.byrange(2, 1, 3)
+    try:
+        expression = (5 * backend.V) * x
+    except (TypeError, ValueError):
+        # Some backends reject before our reflected operator can run.
+        return
+    assert isinstance(expression, Expression)
+    result = expression.derive()
+    assert relative(result.lb, 5 * backend.V) == pytest.approx(1)
+    assert relative(result.ub, 15 * backend.V) == pytest.approx(1)
+
+
+def test_pint_late_import_cannot_drop_outer_units():
+    import subprocess
+    import sys
+
+    source = """
+from worstcase import param
+x = param.byrange(2, 1, 3)
+from pint import UnitRegistry
+u = UnitRegistry()
+try:
+    expression = (5 * u.V) * x
+except TypeError:
+    expression = param.constant(5 * u.V) * x
+result = expression.derive()
+assert result.nom.to("V").magnitude == 10
+assert result.lb.to("V").magnitude == 5
+"""
+    subprocess.run([sys.executable, "-c", source], check=True)
