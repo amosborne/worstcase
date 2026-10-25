@@ -2818,19 +2818,19 @@ files = [
 
 [[package]]
 name = "unyt"
-version = "3.1.0"
+version = "3.2.0"
 description = "A package for handling numpy arrays with units"
 optional = false
-python-versions = ">=3.10"
+python-versions = ">=3.11"
 groups = ["dev"]
 files = [
-    {file = "unyt-3.1.0-py3-none-any.whl", hash = "sha256:6ff9efe694a1c13f5b07ccb4c6b30a0e282d5e4989947f0ef5aadf4ad7be3f69"},
-    {file = "unyt-3.1.0.tar.gz", hash = "sha256:771582a87f1e521c9b62f7ca269b1965c0f77b479f7a063a51e8cef8b4cae51d"},
+    {file = "unyt-3.2.0-py3-none-any.whl", hash = "sha256:bf691dd4f57d550f259661d2c8d5dad9bc41170ab611dbf22817b50dc2a42a97"},
+    {file = "unyt-3.2.0.tar.gz", hash = "sha256:066c7c39219f63cb3024548f3977cf080edf2c4a6991f0508bfb6247e3fbc842"},
 ]
 
 [package.dependencies]
-numpy = ">=1.21.3,<3.0"
-packaging = ">=20.9"
+numpy = ">=1.23.2,<3.0"
+packaging = ">=22.0"
 sympy = ">=1.9.0"
 
 [[package]]
@@ -2912,4 +2912,4 @@ files = [
 [metadata]
 lock-version = "2.1"
 python-versions = ">=3.11,<4"
-content-hash = "2b91c1f8f31f14c1c3c6ca331b7812b55b2aef83b561929a1e105362559c1dcf"
+content-hash = "c98495e15f016a8e76eeef375633a9a34f1fa00eeeac4036142752d3f31c1bb7"
