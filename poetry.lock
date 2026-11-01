@@ -810,20 +810,20 @@ files = [
 
 [[package]]
 name = "flake8"
-version = "7.4.1"
+version = "7.5.0"
 description = "the modular source code checker: pep8 pyflakes and co"
 optional = false
-python-versions = ">=3.10"
+python-versions = ">=3.11"
 groups = ["dev"]
 files = [
-    {file = "flake8-7.4.1-py2.py3-none-any.whl", hash = "sha256:78480274a6d7289d9cb8eafeda241fac57d4ea687d26e32dfdca37b72cdeddad"},
-    {file = "flake8-7.4.1.tar.gz", hash = "sha256:84ea5afcaf344487b0ea5baaebb8100f4cfaebc01f755998f75876664029f587"},
+    {file = "flake8-7.5.0-py2.py3-none-any.whl", hash = "sha256:637ea1a443a78ed6ee461725cdf71ca93bc5cde0abf25436dbebdc3880b4e078"},
+    {file = "flake8-7.5.0.tar.gz", hash = "sha256:0dab7566341aca0d80aa29b5812bdadf256caa6a63e6068e49ac2649918236a4"},
 ]
 
 [package.dependencies]
 mccabe = ">=0.7.0,<0.8.0"
 pycodestyle = ">=2.15.0,<2.16.0"
-pyflakes = ">=4.0.0,<4.1.0"
+pyflakes = ">=4.1.0,<4.2.0"
 
 [[package]]
 name = "flake8-pyproject"
@@ -1960,14 +1960,14 @@ test = ["pytest", "pytest-doctestplus (>=0.7)"]
 
 [[package]]
 name = "pyflakes"
-version = "4.0.3"
+version = "4.1.0"
 description = "passive checker of Python programs"
 optional = false
-python-versions = ">=3.10"
+python-versions = ">=3.11"
 groups = ["dev"]
 files = [
-    {file = "pyflakes-4.0.3-py2.py3-none-any.whl", hash = "sha256:330ba92b8c1db2eb0b8f4068f6c58674e2649a99e334769aa50e3e9c5b11c23a"},
-    {file = "pyflakes-4.0.3.tar.gz", hash = "sha256:94762a3a5a343a79b28754f96c554bce057a592a4896907d73f0369fe824e053"},
+    {file = "pyflakes-4.1.0-py2.py3-none-any.whl", hash = "sha256:b2e05e6bac8e49b67be2a6ffa63422c60f7193fc72e8180255907b41ec997dc1"},
+    {file = "pyflakes-4.1.0.tar.gz", hash = "sha256:592beb57058eb82eb190fb7514f2081c555c51000b029ff71286a681e6cf2f83"},
 ]
 
 [[package]]
@@ -2002,25 +2002,25 @@ diagrams = ["jinja2", "railroad-diagrams"]
 
 [[package]]
 name = "pytest"
-version = "9.1.1"
+version = "9.2.0"
 description = "pytest: simple powerful testing with Python"
 optional = false
 python-versions = ">=3.10"
 groups = ["dev"]
 files = [
-    {file = "pytest-9.1.1-py3-none-any.whl", hash = "sha256:37a86b45efb9a47a61a36449063e8e18d0cab3161329fc099eb21783169c4f0c"},
-    {file = "pytest-9.1.1.tar.gz", hash = "sha256:1088fbde8f2b49d95a549a195707afa7a76a3ce9bcadc26b6d71f0ffda5fe313"},
+    {file = "pytest-9.2.0-py3-none-any.whl", hash = "sha256:07acdcf88ec174f907dc01af70bf52d49b014bbab03faeeade31c96b18c2e588"},
+    {file = "pytest-9.2.0.tar.gz", hash = "sha256:97c4f3b1f3c7414aa36465e09b8220f1d03627993bd51b1282e193753c80557b"},
 ]
 
 [package.dependencies]
 colorama = {version = ">=0.4", markers = "sys_platform == \"win32\""}
-iniconfig = ">=1.0.1"
-packaging = ">=22"
-pluggy = ">=1.5,<2"
-pygments = ">=2.7.2"
+iniconfig = ">=2"
+packaging = ">=24"
+pluggy = ">=1.6,<2"
+pygments = ">=2.15"
 
 [package.extras]
-dev = ["argcomplete", "attrs (>=19.2)", "hypothesis (>=3.56)", "mock", "requests", "setuptools", "xmlschema"]
+dev = ["argcomplete", "asynctest ; python_version < \"3.11\"", "attrs (>=23.1)", "coverage (>=7.5)", "hypothesis (>=6.75)", "mock", "numpy (>=1.26)", "pexpect (>=4.9)", "pytest-xdist (>=3.5)", "pyyaml", "requests", "setuptools", "xmlschema"]
 
 [[package]]
 name = "pytest-cov"
@@ -2818,19 +2818,19 @@ files = [
 
 [[package]]
 name = "unyt"
-version = "3.1.0"
+version = "3.2.0"
 description = "A package for handling numpy arrays with units"
 optional = false
-python-versions = ">=3.10"
+python-versions = ">=3.11"
 groups = ["dev"]
 files = [
-    {file = "unyt-3.1.0-py3-none-any.whl", hash = "sha256:6ff9efe694a1c13f5b07ccb4c6b30a0e282d5e4989947f0ef5aadf4ad7be3f69"},
-    {file = "unyt-3.1.0.tar.gz", hash = "sha256:771582a87f1e521c9b62f7ca269b1965c0f77b479f7a063a51e8cef8b4cae51d"},
+    {file = "unyt-3.2.0-py3-none-any.whl", hash = "sha256:bf691dd4f57d550f259661d2c8d5dad9bc41170ab611dbf22817b50dc2a42a97"},
+    {file = "unyt-3.2.0.tar.gz", hash = "sha256:066c7c39219f63cb3024548f3977cf080edf2c4a6991f0508bfb6247e3fbc842"},
 ]
 
 [package.dependencies]
-numpy = ">=1.21.3,<3.0"
-packaging = ">=20.9"
+numpy = ">=1.23.2,<3.0"
+packaging = ">=22.0"
 sympy = ">=1.9.0"
 
 [[package]]
@@ -2912,4 +2912,4 @@ files = [
 [metadata]
 lock-version = "2.1"
 python-versions = ">=3.11,<4"
-content-hash = "2b91c1f8f31f14c1c3c6ca331b7812b55b2aef83b561929a1e105362559c1dcf"
+content-hash = "a1161a8f30573e62ff2be3448694943d8f1422b8c582693ce5d9171dda09a2d1"
